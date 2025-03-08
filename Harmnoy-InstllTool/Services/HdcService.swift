@@ -30,27 +30,22 @@ class HdcService: ObservableObject {
     
     /// 查找hdc二进制文件
     private func findHdcBinary() {
-        // 在应用Bundle中找到hdc二进制文件
-        if let hdcPath = Bundle.main.path(forResource: "hdc", ofType: nil) {
-            self.hdcBinaryPath = hdcPath
-            print("找到hdc工具: \(hdcPath)")
+        // 优先查找应用程序Resources目录下的hdc/hdc
+        let appHdcPath = Bundle.main.bundlePath + "/Contents/Resources/hdc/hdc"
+        if FileManager.default.fileExists(atPath: appHdcPath) {
+            self.hdcBinaryPath = appHdcPath
+            print("找到hdc工具: \(appHdcPath)")
             return
         }
         
         // 如果没有找到，尝试在开发时的路径列表中查找
         let possibleHdcPaths = [
-            // 1. 应用程序Resources目录中
-            Bundle.main.bundlePath + "/Contents/Resources/hdc",
-            // 2. 开发目录下的ResourcesTools/hdc目录
+            // 1. 开发目录下的ResourcesTools/hdc目录
             Bundle.main.bundlePath + "/../ResourcesTools/hdc/hdc",
-            // 3. 开发目录下的ResourcesTools/hdc文件
-            Bundle.main.bundlePath + "/../ResourcesTools/hdc",
-            // 4. 开发目录下的ResourcesTools/toolchains/hdc
+            // 2. 开发目录下的ResourcesTools/toolchains/hdc
             Bundle.main.bundlePath + "/../ResourcesTools/toolchains/hdc",
-            // 5. 检查系统路径
+            // 3. 检查系统路径
             "/usr/local/bin/hdc",
-            // 6. toolchains其他可能位置
-            Bundle.main.bundlePath + "/../ResourcesTools/toolchains/bin/hdc",
         ]
         
         let fileManager = FileManager.default
@@ -62,11 +57,11 @@ class HdcService: ObservableObject {
             }
         }
         
-        print("警告: 未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中")
+        print("警告: 未找到hdc工具。请确保将hdc工具放在ResourcesTools/hdc目录中")
         
         // 确保在主线程更新UI相关的@Published属性
         DispatchQueue.main.async { [weak self] in
-            self?.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中"
+            self?.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools/hdc目录中"
         }
     }
     
@@ -104,6 +99,8 @@ class HdcService: ObservableObject {
         #!/bin/bash
         # 设置DYLD_LIBRARY_PATH指向hdc所在目录
         export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        # 设置工作目录为hdc目录，以便hdc可以找到其需要的其他文件
+        cd "\(hdcDirectory)"
         
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
@@ -166,6 +163,8 @@ class HdcService: ObservableObject {
         #!/bin/bash
         # 设置DYLD_LIBRARY_PATH指向hdc所在目录
         export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        # 设置工作目录为hdc目录
+        cd "\(hdcDirectory)"
         
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
@@ -221,6 +220,8 @@ class HdcService: ObservableObject {
                 #!/bin/bash
                 # 设置DYLD_LIBRARY_PATH指向hdc所在目录
                 export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+                # 设置工作目录为hdc目录
+                cd "\(hdcDirectory)"
                 
                 # 确保hdc有执行权限
                 chmod +x "\(hdcPath)"
@@ -293,6 +294,8 @@ class HdcService: ObservableObject {
         #!/bin/bash
         # 设置DYLD_LIBRARY_PATH指向hdc所在目录
         export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        # 设置工作目录为hdc目录
+        cd "\(hdcDirectory)"
         
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
@@ -350,6 +353,8 @@ class HdcService: ObservableObject {
         #!/bin/bash
         # 设置DYLD_LIBRARY_PATH指向hdc所在目录
         export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        # 设置工作目录为hdc目录
+        cd "\(hdcDirectory)"
         
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
