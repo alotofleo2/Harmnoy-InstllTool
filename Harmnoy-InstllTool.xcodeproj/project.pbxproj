@@ -6,8 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		8011AB6A2D7C4176000448D2 /* libdyld.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8011AB692D7C4176000448D2 /* libdyld.tbd */; };
+		8011AB6C2D7C41A1000448D2 /* libUSBCfwflasher.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8011AB6B2D7C41A1000448D2 /* libUSBCfwflasher.tbd */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		8011AB4C2D7C37BF000448D2 /* Harmnoy-InstllTool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Harmnoy-InstllTool.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		8011AB692D7C4176000448D2 /* libdyld.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libdyld.tbd; path = usr/lib/system/libdyld.tbd; sourceTree = SDKROOT; };
+		8011AB6B2D7C41A1000448D2 /* libUSBCfwflasher.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libUSBCfwflasher.tbd; path = usr/lib/libUSBCfwflasher.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +30,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8011AB6C2D7C41A1000448D2 /* libUSBCfwflasher.tbd in Frameworks */,
+				8011AB6A2D7C4176000448D2 /* libdyld.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,6 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				8011AB4E2D7C37BF000448D2 /* Harmnoy-InstllTool */,
+				8011AB682D7C4176000448D2 /* Frameworks */,
 				8011AB4D2D7C37BF000448D2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -43,6 +53,15 @@
 				8011AB4C2D7C37BF000448D2 /* Harmnoy-InstllTool.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8011AB682D7C4176000448D2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8011AB6B2D7C41A1000448D2 /* libUSBCfwflasher.tbd */,
+				8011AB692D7C4176000448D2 /* libdyld.tbd */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -262,6 +281,10 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SDKROOT)/usr/lib/system",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "lefitnss.com.Harmnoy-InstllTool";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -288,6 +311,10 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SDKROOT)/usr/lib/system",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "lefitnss.com.Harmnoy-InstllTool";

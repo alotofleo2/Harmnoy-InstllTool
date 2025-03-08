@@ -16,7 +16,6 @@ struct ContentView: View {
     @State private var showFilePickerDialog = false
     @State private var showHdcPickerDialog = false
     @State private var showErrorAlert = false
-    @State private var showLibPickerDialog = false
     @State private var errorMessage = ""
     
     var body: some View {
@@ -85,22 +84,11 @@ struct ContentView: View {
                             .foregroundColor(.gray)
                             .padding()
                         
-                        if let error = hdcService.lastError {
-                            if error.contains("未找到hdc工具") {
-                                Button("选择hdc工具") {
-                                    showHdcPickerDialog = true
-                                }
-                                .buttonStyle(.borderedProminent)
-                            } else if error.contains("libusb_shared.dylib") {
-                                VStack(spacing: 5) {
-                                    Text("缺少libusb_shared.dylib库文件")
-                                        .foregroundColor(.red)
-                                    Button("选择libusb_shared.dylib文件") {
-                                        showLibPickerDialog = true
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
+                        if let error = hdcService.lastError, error.contains("未找到hdc工具") {
+                            Button("选择hdc工具") {
+                                showHdcPickerDialog = true
                             }
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                 } else {
@@ -147,18 +135,11 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 
-                if let error = hdcService.lastError {
-                    if error.contains("未找到hdc工具") {
-                        Button("选择hdc工具") {
-                            showHdcPickerDialog = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else if error.contains("libusb_shared.dylib") {
-                        Button("选择libusb_shared.dylib文件") {
-                            showLibPickerDialog = true
-                        }
-                        .buttonStyle(.borderedProminent)
+                if let error = hdcService.lastError, error.contains("未找到hdc工具") {
+                    Button("选择hdc工具") {
+                        showHdcPickerDialog = true
                     }
+                    .buttonStyle(.borderedProminent)
                 }
             }
             .padding(.horizontal)
@@ -176,11 +157,8 @@ struct ContentView: View {
                 if error.contains("未找到hdc工具") {
                     errorMessage = "未找到hdc工具。\n请确保已正确安装hdc工具，或手动选择hdc工具文件。"
                     showErrorAlert = true
-                } else if error.contains("libusb_shared.dylib") {
-                    errorMessage = "缺少libusb_shared.dylib库文件。\nhdc工具需要此库文件才能正常工作。"
-                    showErrorAlert = true
                 } else if error.contains("无法启动hdc服务") {
-                    errorMessage = "无法启动hdc服务。\n可能是由于缺少必要的依赖库或权限问题。"
+                    errorMessage = "无法启动hdc服务。\n可能是由于权限问题或hdc工具不兼容。"
                     showErrorAlert = true
                 }
             }
@@ -214,48 +192,14 @@ struct ContentView: View {
                 statusMessage = "选择hdc工具失败: \(error.localizedDescription)"
             }
         }
-        .fileImporter(
-            isPresented: $showLibPickerDialog,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    // 复制选择的libusb_shared.dylib库到应用资源目录
-                    copyLibUsbToResourcesDirectory(from: url)
-                }
-            case .failure(let error):
-                statusMessage = "选择库文件失败: \(error.localizedDescription)"
-            }
-        }
         .alert(isPresented: $showErrorAlert) {
-            if let error = hdcService.lastError {
-                if error.contains("未找到hdc工具") {
-                    return Alert(
-                        title: Text("hdc工具错误"),
-                        message: Text(errorMessage),
-                        primaryButton: .default(Text("选择hdc工具")) {
-                            showHdcPickerDialog = true
-                        },
-                        secondaryButton: .cancel(Text("取消"))
-                    )
-                } else if error.contains("libusb_shared.dylib") {
-                    return Alert(
-                        title: Text("缺少依赖库"),
-                        message: Text(errorMessage),
-                        primaryButton: .default(Text("选择libusb_shared.dylib")) {
-                            showLibPickerDialog = true
-                        },
-                        secondaryButton: .cancel(Text("取消"))
-                    )
-                }
-            }
-            
-            return Alert(
-                title: Text("错误"),
+            Alert(
+                title: Text("hdc工具错误"),
                 message: Text(errorMessage),
-                dismissButton: .default(Text("确定"))
+                primaryButton: .default(Text("选择hdc工具")) {
+                    showHdcPickerDialog = true
+                },
+                secondaryButton: .cancel(Text("取消"))
             )
         }
     }
@@ -359,43 +303,6 @@ struct ContentView: View {
             } catch {
                 DispatchQueue.main.async {
                     statusMessage = "安装hdc工具失败: \(error.localizedDescription)"
-                    isLoading = false
-                }
-            }
-        }
-    }
-    
-    private func copyLibUsbToResourcesDirectory(from url: URL) {
-        statusMessage = "正在安装libusb_shared.dylib库..."
-        isLoading = true
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let fileManager = FileManager.default
-                let resourcesDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources")
-                let libDestinationPath = resourcesDirectory.appendingPathComponent("libusb_shared.dylib")
-                
-                // 确保目标目录存在
-                try fileManager.createDirectory(at: resourcesDirectory, withIntermediateDirectories: true)
-                
-                // 如果目标路径已存在，先删除它
-                if fileManager.fileExists(atPath: libDestinationPath.path) {
-                    try fileManager.removeItem(at: libDestinationPath)
-                }
-                
-                // 复制选择的文件到目标路径
-                try fileManager.copyItem(at: url, to: libDestinationPath)
-                
-                DispatchQueue.main.async {
-                    statusMessage = "libusb_shared.dylib库已安装，正在重新启动服务..."
-                    isLoading = false
-                    
-                    // 重新启动服务
-                    startServices()
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    statusMessage = "安装库文件失败: \(error.localizedDescription)"
                     isLoading = false
                 }
             }
