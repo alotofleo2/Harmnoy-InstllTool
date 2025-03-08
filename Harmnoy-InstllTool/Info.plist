@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2025 方焘. All rights reserved.</string>
+    
+    <!-- 文件访问权限 -->
+    <key>NSFileProviderDomainUsageDescription</key>
+    <string>此应用需要访问文件系统以选择和安装HarmonyOS应用包(.hap)</string>
+    
+    <!-- USB设备访问声明 -->
+    <key>IOKitPersonalities</key>
+    <dict>
+        <key>HarmonyDevice</key>
+        <dict>
+            <key>CFBundleIdentifier</key>
+            <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+            <key>IOClass</key>
+            <string>IOUSBDevice</string>
+            <key>IOProviderClass</key>
+            <string>IOUSBDevice</string>
+        </dict>
+    </dict>
+    
+    <!-- 安全策略例外 -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+    
+    <!-- 应用沙盒安全例外 -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>此应用需要执行命令行工具以管理HarmonyOS设备</string>
+    
+    <!-- 硬件权限 -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>此应用需要使用蓝牙与HarmonyOS设备通信</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>此应用需要使用蓝牙与HarmonyOS设备通信</string>
+    
+    <!-- macOS安全权限 -->
+    <key>com.apple.security.device.usb</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist> 

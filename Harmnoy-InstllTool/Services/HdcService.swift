@@ -5,7 +5,7 @@ class HdcService: ObservableObject {
     @Published var isServiceRunning: Bool = false
     @Published var lastError: String? = nil
     
-    private let hdcBinaryPath: String
+    private var hdcBinaryPath: String?
     private let hdcServerProcess: Process = Process()
     
     struct Device: Identifiable, Hashable {
@@ -24,22 +24,62 @@ class HdcService: ObservableObject {
     }
     
     init() {
+        // 找到hdc二进制文件
+        findHdcBinary()
+    }
+    
+    /// 查找hdc二进制文件
+    private func findHdcBinary() {
         // 在应用Bundle中找到hdc二进制文件
         if let hdcPath = Bundle.main.path(forResource: "hdc", ofType: nil) {
             self.hdcBinaryPath = hdcPath
-        } else {
-            // 如果没有找到,尝试使用开发时的路径
-            let devPath = Bundle.main.bundlePath + "/Contents/Resources/hdc"
-            self.hdcBinaryPath = devPath
+            print("找到hdc工具: \(hdcPath)")
+            return
         }
+        
+        // 如果没有找到，尝试在开发时的路径列表中查找
+        let possibleHdcPaths = [
+            // 1. 应用程序Resources目录中
+            Bundle.main.bundlePath + "/Contents/Resources/hdc",
+            // 2. 开发目录下的ResourcesTools/hdc目录
+            Bundle.main.bundlePath + "/../ResourcesTools/hdc/hdc",
+            // 3. 开发目录下的ResourcesTools/hdc文件
+            Bundle.main.bundlePath + "/../ResourcesTools/hdc",
+            // 4. 开发目录下的ResourcesTools/toolchains/hdc
+            Bundle.main.bundlePath + "/../ResourcesTools/toolchains/hdc",
+            // 5. 检查系统路径
+            "/usr/local/bin/hdc",
+            // 6. toolchains其他可能位置
+            Bundle.main.bundlePath + "/../ResourcesTools/toolchains/bin/hdc",
+        ]
+        
+        let fileManager = FileManager.default
+        for path in possibleHdcPaths {
+            if fileManager.fileExists(atPath: path) {
+                self.hdcBinaryPath = path
+                print("找到hdc工具: \(path)")
+                return
+            }
+        }
+        
+        print("警告: 未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中")
+        self.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中"
     }
     
     /// 启动hdc服务
     func startHdcServer() {
         guard !isServiceRunning else { return }
+        guard let hdcPath = hdcBinaryPath else {
+            lastError = "无法启动hdc服务: 未找到hdc工具"
+            print("无法启动hdc服务: 未找到hdc工具")
+            
+            // 重新尝试查找hdc工具
+            findHdcBinary()
+            return
+        }
         
         do {
-            hdcServerProcess.executableURL = URL(fileURLWithPath: hdcBinaryPath)
+            hdcServerProcess.executableURL = URL(fileURLWithPath: hdcPath)
             hdcServerProcess.arguments = ["start-server"]
             
             try hdcServerProcess.run()
@@ -56,10 +96,14 @@ class HdcService: ObservableObject {
     /// 停止hdc服务
     func stopHdcServer() {
         guard isServiceRunning else { return }
+        guard let hdcPath = hdcBinaryPath else {
+            lastError = "无法停止hdc服务: 未找到hdc工具"
+            return
+        }
         
         do {
             let task = Process()
-            task.executableURL = URL(fileURLWithPath: hdcBinaryPath)
+            task.executableURL = URL(fileURLWithPath: hdcPath)
             task.arguments = ["kill-server"]
             
             try task.run()
@@ -76,6 +120,12 @@ class HdcService: ObservableObject {
     func refreshDeviceList() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+            guard let hdcPath = self.hdcBinaryPath else {
+                DispatchQueue.main.async {
+                    self.lastError = "无法刷新设备列表: 未找到hdc工具"
+                }
+                return
+            }
             
             do {
                 let devices = try self.executeHdcCommand(arguments: ["list", "devices"])
@@ -110,12 +160,17 @@ class HdcService: ObservableObject {
     
     /// 执行hdc命令
     private func executeHdcCommand(arguments: [String]) throws -> String {
+        guard let hdcPath = hdcBinaryPath else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
+        }
+        
         let task = Process()
         let pipe = Pipe()
         
         task.standardOutput = pipe
         task.standardError = pipe
-        task.executableURL = URL(fileURLWithPath: hdcBinaryPath)
+        task.executableURL = URL(fileURLWithPath: hdcPath)
         task.arguments = arguments
         
         try task.run()

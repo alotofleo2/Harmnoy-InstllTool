@@ -14,6 +14,9 @@ struct ContentView: View {
     @State private var isLoading: Bool = false
     @State private var statusMessage: String = "准备就绪"
     @State private var showFilePickerDialog = false
+    @State private var showHdcPickerDialog = false
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
     
     var body: some View {
         VStack(spacing: 20) {
@@ -76,9 +79,18 @@ struct ContentView: View {
                 }
                 
                 if hdcService.connectedDevices.isEmpty {
-                    Text("未检测到已连接的设备")
-                        .foregroundColor(.gray)
-                        .padding()
+                    VStack(spacing: 10) {
+                        Text("未检测到已连接的设备")
+                            .foregroundColor(.gray)
+                            .padding()
+                        
+                        if hdcService.lastError != nil && hdcService.lastError!.contains("未找到hdc工具") {
+                            Button("选择hdc工具") {
+                                showHdcPickerDialog = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
                 } else {
                     List {
                         ForEach(hdcService.connectedDevices) { device in
@@ -113,17 +125,39 @@ struct ContentView: View {
                 }
                 
                 Text(statusMessage)
-                    .foregroundColor(statusMessage.contains("失败") ? .red : .primary)
+                    .foregroundColor(statusMessage.contains("失败") || statusMessage.contains("错误") ? .red : .primary)
             }
             .padding()
             
             Spacer()
+            
+            // 底部工具栏
+            HStack {
+                Spacer()
+                
+                if hdcService.lastError != nil && hdcService.lastError!.contains("未找到hdc工具") {
+                    Button("选择hdc工具") {
+                        showHdcPickerDialog = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(.horizontal)
         }
         .padding()
         .frame(minWidth: 500, minHeight: 500)
         .onAppear {
             // 在应用启动时启动hdc服务并检测设备
             startServices()
+        }
+        .onChange(of: hdcService.lastError) { newError in
+            if let error = newError {
+                statusMessage = error
+                if error.contains("未找到hdc工具") || error.contains("无法启动hdc服务") {
+                    errorMessage = "未找到hdc工具或无法启动服务。\n请确保已正确安装hdc工具，或手动选择hdc工具文件。"
+                    showErrorAlert = true
+                }
+            }
         }
         .fileImporter(
             isPresented: $showFilePickerDialog,
@@ -138,6 +172,31 @@ struct ContentView: View {
             case .failure(let error):
                 statusMessage = "选择文件失败: \(error.localizedDescription)"
             }
+        }
+        .fileImporter(
+            isPresented: $showHdcPickerDialog,
+            allowedContentTypes: [.unixExecutable, .executable],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    // 复制选择的hdc工具到应用资源目录
+                    copyHdcToolToResourcesDirectory(from: url)
+                }
+            case .failure(let error):
+                statusMessage = "选择hdc工具失败: \(error.localizedDescription)"
+            }
+        }
+        .alert(isPresented: $showErrorAlert) {
+            Alert(
+                title: Text("hdc工具错误"),
+                message: Text(errorMessage),
+                primaryButton: .default(Text("选择hdc工具")) {
+                    showHdcPickerDialog = true
+                },
+                secondaryButton: .cancel(Text("取消"))
+            )
         }
     }
     
@@ -201,6 +260,46 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     isLoading = false
                     statusMessage = "安装失败: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func copyHdcToolToResourcesDirectory(from url: URL) {
+        statusMessage = "正在安装hdc工具..."
+        isLoading = true
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let fileManager = FileManager.default
+                let resourcesDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources")
+                let hdcDestinationPath = resourcesDirectory.appendingPathComponent("hdc")
+                
+                // 确保目标目录存在
+                try fileManager.createDirectory(at: resourcesDirectory, withIntermediateDirectories: true)
+                
+                // 如果目标路径已存在，先删除它
+                if fileManager.fileExists(atPath: hdcDestinationPath.path) {
+                    try fileManager.removeItem(at: hdcDestinationPath)
+                }
+                
+                // 复制选择的文件到目标路径
+                try fileManager.copyItem(at: url, to: hdcDestinationPath)
+                
+                // 设置执行权限
+                try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcDestinationPath.path)
+                
+                DispatchQueue.main.async {
+                    statusMessage = "hdc工具已安装，正在重新启动服务..."
+                    isLoading = false
+                    
+                    // 重新启动服务
+                    startServices()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    statusMessage = "安装hdc工具失败: \(error.localizedDescription)"
+                    isLoading = false
                 }
             }
         }
