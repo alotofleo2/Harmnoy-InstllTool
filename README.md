@@ -22,6 +22,14 @@ hdc (HarmonyOS Device Connector) 是华为开发的用于连接和管理HarmonyO
 1. 从[华为开发者联盟网站](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/hdc)下载
 2. 从HarmonyOS SDK包中提取（通常位于SDK的toolchains目录下）
 
+### 必要的依赖库文件
+hdc工具依赖以下库文件：
+- libusb_shared.dylib：用于访问USB设备
+
+如果这些库文件不存在，应用会提示您手动选择这些文件。您可以从以下位置获取：
+1. 从HarmonyOS SDK包中提取（通常位于SDK的lib目录下）
+2. 从华为开发者网站下载
+
 ### 配置hdc工具
 获取hdc工具后，您有以下几种方式配置：
 
@@ -31,11 +39,19 @@ hdc (HarmonyOS Device Connector) 是华为开发的用于连接和管理HarmonyO
    ResourcesTools/
    └── hdc        # 直接放置hdc可执行文件
    ```
+2. 将依赖库文件放入项目根目录下的`ResourcesTools/lib`文件夹中
+   ```
+   ResourcesTools/
+   └── lib/
+       └── libusb_shared.dylib
+   ```
 
 #### 方式2: 在应用程序中手动选择
 1. 启动应用程序
 2. 如果应用程序提示"未找到hdc工具"，点击"选择hdc工具"按钮
 3. 在文件选择对话框中选择hdc可执行文件
+4. 如果应用程序提示"缺少libusb_shared.dylib库文件"，点击"选择libusb_shared.dylib文件"按钮
+5. 在文件选择对话框中选择相应的库文件
 
 #### 方式3: 使用toolchains包
 如果您有完整的toolchains包，可以将其放置在以下位置：
@@ -44,11 +60,12 @@ ResourcesTools/
 └── toolchains/
     ├── bin/
     │   └── hdc    # hdc可执行文件
-    └── ...        # 其他toolchains文件
+    └── lib/
+        └── libusb_shared.dylib
 ```
 
 ### 开发设置
-1. 配置好hdc工具
+1. 配置好hdc工具和依赖库
 2. 打开Xcode项目并构建运行
 
 ## 使用方法
@@ -73,9 +90,17 @@ ResourcesTools/
 
 ## 故障排除
 
-如果遇到"未找到hdc工具"错误，请尝试以下解决方法：
-
+### 如果遇到"未找到hdc工具"错误
 1. 确保hdc工具已正确放置在ResourcesTools目录的正确位置
 2. 使用应用程序中的"选择hdc工具"功能手动指定hdc工具位置
 3. 确保hdc工具具有执行权限（chmod +x path/to/hdc）
-4. 重启应用程序 
+
+### 如果遇到"缺少libusb_shared.dylib"错误
+1. 确保libusb_shared.dylib库已正确放置在ResourcesTools/lib目录中
+2. 使用应用程序中的"选择libusb_shared.dylib文件"功能手动指定库文件位置
+3. 检查hdc工具是否与libusb_shared.dylib版本匹配
+
+### 其他问题
+1. 重启应用程序
+2. 确保HarmonyOS设备正确连接且已开启USB调试
+3. 检查系统日志获取更多信息 

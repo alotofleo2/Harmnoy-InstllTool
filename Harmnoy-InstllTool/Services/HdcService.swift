@@ -63,14 +63,21 @@ class HdcService: ObservableObject {
         }
         
         print("警告: 未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中")
-        self.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中"
+        
+        // 确保在主线程更新UI相关的@Published属性
+        DispatchQueue.main.async { [weak self] in
+            self?.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools目录中"
+        }
     }
     
     /// 启动hdc服务
     func startHdcServer() {
         guard !isServiceRunning else { return }
         guard let hdcPath = hdcBinaryPath else {
-            lastError = "无法启动hdc服务: 未找到hdc工具"
+            // 确保在主线程更新UI相关的@Published属性
+            DispatchQueue.main.async { [weak self] in
+                self?.lastError = "无法启动hdc服务: 未找到hdc工具"
+            }
             print("无法启动hdc服务: 未找到hdc工具")
             
             // 重新尝试查找hdc工具
@@ -78,17 +85,52 @@ class HdcService: ObservableObject {
             return
         }
         
+        // 由于hdc可能依赖于libusb_shared.dylib，我们尝试使用替代方法
+        // 尝试使用命令行启动hdc而不是直接使用Process
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        
+        // 创建一个临时脚本来设置必要的环境变量并运行hdc
+        let tempScriptPath = NSTemporaryDirectory() + "run_hdc_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 尝试设置LD_LIBRARY_PATH指向可能的库路径
+        export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$(dirname "\(hdcPath)"):\(Bundle.main.bundlePath)/Contents/Resources:\(Bundle.main.bundlePath)/Contents/Frameworks"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 运行hdc命令
+        "\(hdcPath)" start-server
+        
+        exit $?
+        """
+        
         do {
-            hdcServerProcess.executableURL = URL(fileURLWithPath: hdcPath)
-            hdcServerProcess.arguments = ["start-server"]
+            try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
             
-            try hdcServerProcess.run()
-            isServiceRunning = true
+            task.arguments = [tempScriptPath]
+            try task.run()
             
-            // 首次启动服务后刷新设备列表
-            refreshDeviceList()
+            // 设置为正在运行状态
+            DispatchQueue.main.async { [weak self] in
+                self?.isServiceRunning = true
+            }
+            
+            // 清理临时脚本
+            DispatchQueue.global(qos: .utility).async {
+                task.waitUntilExit()
+                try? FileManager.default.removeItem(atPath: tempScriptPath)
+                
+                // 刷新设备列表
+                self.refreshDeviceList()
+            }
         } catch {
-            lastError = "启动hdc服务失败: \(error.localizedDescription)"
+            // 确保在主线程更新UI相关的@Published属性
+            DispatchQueue.main.async { [weak self] in
+                self?.lastError = "启动hdc服务失败: \(error.localizedDescription)"
+            }
             print("启动hdc服务失败: \(error)")
         }
     }
@@ -97,21 +139,46 @@ class HdcService: ObservableObject {
     func stopHdcServer() {
         guard isServiceRunning else { return }
         guard let hdcPath = hdcBinaryPath else {
-            lastError = "无法停止hdc服务: 未找到hdc工具"
+            // 确保在主线程更新UI相关的@Published属性
+            DispatchQueue.main.async { [weak self] in
+                self?.lastError = "无法停止hdc服务: 未找到hdc工具"
+            }
             return
         }
         
+        // 使用相同的脚本方法停止服务
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        
+        let tempScriptPath = NSTemporaryDirectory() + "stop_hdc_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$(dirname "\(hdcPath)"):\(Bundle.main.bundlePath)/Contents/Resources:\(Bundle.main.bundlePath)/Contents/Frameworks"
+        chmod +x "\(hdcPath)"
+        "\(hdcPath)" kill-server
+        exit $?
+        """
+        
         do {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: hdcPath)
-            task.arguments = ["kill-server"]
+            try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
             
+            task.arguments = [tempScriptPath]
             try task.run()
             task.waitUntilExit()
             
-            isServiceRunning = false
+            // 清理临时脚本
+            try? FileManager.default.removeItem(atPath: tempScriptPath)
+            
+            // 确保在主线程更新UI相关的@Published属性
+            DispatchQueue.main.async { [weak self] in
+                self?.isServiceRunning = false
+            }
         } catch {
-            lastError = "停止hdc服务失败: \(error.localizedDescription)"
+            // 确保在主线程更新UI相关的@Published属性
+            DispatchQueue.main.async { [weak self] in
+                self?.lastError = "停止hdc服务失败: \(error.localizedDescription)"
+            }
             print("停止hdc服务失败: \(error)")
         }
     }
@@ -128,37 +195,159 @@ class HdcService: ObservableObject {
             }
             
             do {
-                let devices = try self.executeHdcCommand(arguments: ["list", "devices"])
+                // 使用脚本方法来执行hdc命令
+                let tempScriptPath = NSTemporaryDirectory() + "list_devices_\(UUID().uuidString).sh"
+                let scriptContent = """
+                #!/bin/bash
+                export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$(dirname "\(hdcPath)"):\(Bundle.main.bundlePath)/Contents/Resources:\(Bundle.main.bundlePath)/Contents/Frameworks"
+                chmod +x "\(hdcPath)"
+                "\(hdcPath)" list devices
+                exit $?
+                """
                 
-                // 解析设备列表输出
-                let deviceList = self.parseDeviceListOutput(devices)
+                try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
                 
-                DispatchQueue.main.async {
-                    self.connectedDevices = deviceList
-                    self.lastError = nil
+                let task = Process()
+                let pipe = Pipe()
+                
+                task.standardOutput = pipe
+                task.standardError = pipe
+                task.executableURL = URL(fileURLWithPath: "/bin/bash")
+                task.arguments = [tempScriptPath]
+                
+                try task.run()
+                task.waitUntilExit()
+                
+                // 清理临时脚本
+                try? FileManager.default.removeItem(atPath: tempScriptPath)
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                
+                if let output = String(data: data, encoding: .utf8) {
+                    if task.terminationStatus != 0 {
+                        throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
+                                     userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
+                    }
+                    
+                    // 解析设备列表输出
+                    let deviceList = self.parseDeviceListOutput(output)
+                    
+                    // 确保在主线程更新UI相关的@Published属性
+                    DispatchQueue.main.async {
+                        self.connectedDevices = deviceList
+                        self.lastError = nil
+                    }
+                } else {
+                    throw NSError(domain: "HdcService", code: -1,
+                                 userInfo: [NSLocalizedDescriptionKey: "无法解析命令输出"])
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.lastError = "获取设备列表失败: \(error.localizedDescription)"
-                    print("获取设备列表失败: \(error)")
                 }
+                print("获取设备列表失败: \(error)")
             }
         }
     }
     
     /// 安装应用包到指定设备
     func installPackage(packagePath: String, deviceId: String) throws -> String {
-        let output = try executeHdcCommand(arguments: ["-t", deviceId, "install", packagePath])
-        return output
+        // 使用相同的脚本方法执行安装命令
+        guard let hdcPath = hdcBinaryPath else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
+        }
+        
+        let tempScriptPath = NSTemporaryDirectory() + "install_app_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$(dirname "\(hdcPath)"):\(Bundle.main.bundlePath)/Contents/Resources:\(Bundle.main.bundlePath)/Contents/Frameworks"
+        chmod +x "\(hdcPath)"
+        "\(hdcPath)" -t "\(deviceId)" install "\(packagePath)"
+        exit $?
+        """
+        
+        try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
+        
+        let task = Process()
+        let pipe = Pipe()
+        
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [tempScriptPath]
+        
+        try task.run()
+        task.waitUntilExit()
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        
+        if let output = String(data: data, encoding: .utf8) {
+            if task.terminationStatus != 0 {
+                throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
+                             userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
+            }
+            return output
+        } else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "无法解析命令输出"])
+        }
     }
     
     /// 卸载应用
     func uninstallPackage(packageName: String, deviceId: String) throws -> String {
-        let output = try executeHdcCommand(arguments: ["-t", deviceId, "uninstall", packageName])
-        return output
+        // 使用相同的脚本方法执行卸载命令
+        guard let hdcPath = hdcBinaryPath else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
+        }
+        
+        let tempScriptPath = NSTemporaryDirectory() + "uninstall_app_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        export DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH:$(dirname "\(hdcPath)"):\(Bundle.main.bundlePath)/Contents/Resources:\(Bundle.main.bundlePath)/Contents/Frameworks"
+        chmod +x "\(hdcPath)"
+        "\(hdcPath)" -t "\(deviceId)" uninstall "\(packageName)"
+        exit $?
+        """
+        
+        try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
+        
+        let task = Process()
+        let pipe = Pipe()
+        
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [tempScriptPath]
+        
+        try task.run()
+        task.waitUntilExit()
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        
+        if let output = String(data: data, encoding: .utf8) {
+            if task.terminationStatus != 0 {
+                throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
+                             userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
+            }
+            return output
+        } else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "无法解析命令输出"])
+        }
     }
     
-    /// 执行hdc命令
+    /// 执行hdc命令（备用方法，现在不直接使用）
     private func executeHdcCommand(arguments: [String]) throws -> String {
         guard let hdcPath = hdcBinaryPath else {
             throw NSError(domain: "HdcService", code: -1,

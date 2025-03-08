@@ -32,6 +32,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("hdc工具已存在于Resources目录")
             // 确保有执行权限
             try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcDestinationPath.path)
+            
+            // 检查依赖项
+            checkAndHandleDependencies(forHdcAt: hdcDestinationPath.path)
             return
         }
         
@@ -61,6 +64,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcDestinationPath.path)
                     
                     print("hdc工具已从 \(hdcPath) 复制到应用Resources目录")
+                    
+                    // 检查和处理依赖项
+                    checkAndHandleDependencies(forHdcAt: hdcDestinationPath.path)
                     return
                 } catch {
                     print("复制hdc工具失败: \(error)")
@@ -80,6 +86,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "确定")
             alert.runModal()
         }
+    }
+    
+    /// 检查hdc依赖项并处理
+    private func checkAndHandleDependencies(forHdcAt hdcPath: String) {
+        // 检查是否有libusb_shared.dylib依赖
+        let resourcesDirectory = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources")
+        let libUsbPath = resourcesDirectory.appendingPathComponent("libusb_shared.dylib")
+        
+        // 如果已经存在libusb_shared.dylib，就不需要再复制
+        if FileManager.default.fileExists(atPath: libUsbPath.path) {
+            print("libusb_shared.dylib已存在")
+            return
+        }
+        
+        // 查找可能的libusb_shared.dylib路径
+        let possibleLibPaths = [
+            // 1. 在hdc工具所在目录
+            URL(fileURLWithPath: hdcPath).deletingLastPathComponent().appendingPathComponent("libusb_shared.dylib").path,
+            // 2. 在ResourcesTools/lib目录
+            Bundle.main.bundlePath + "/../ResourcesTools/lib/libusb_shared.dylib",
+            // 3. 在ResourcesTools/toolchains/lib目录
+            Bundle.main.bundlePath + "/../ResourcesTools/toolchains/lib/libusb_shared.dylib",
+        ]
+        
+        // 尝试复制找到的第一个libusb_shared.dylib
+        for libPath in possibleLibPaths {
+            if FileManager.default.fileExists(atPath: libPath) {
+                do {
+                    try FileManager.default.copyItem(atPath: libPath, toPath: libUsbPath.path)
+                    print("libusb_shared.dylib已从 \(libPath) 复制到应用Resources目录")
+                    return
+                } catch {
+                    print("复制libusb_shared.dylib失败: \(error)")
+                }
+            }
+        }
+        
+        print("警告: 未找到libusb_shared.dylib库文件。hdc工具可能无法正常工作。")
+        print("尝试使用替代方法启动hdc服务...")
     }
     
     /// 获取hdc工具路径
