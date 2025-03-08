@@ -70,6 +70,12 @@ class HdcService: ObservableObject {
         }
     }
     
+    /// 获取hdc工具所在目录
+    private func getHdcDirectory() -> String? {
+        guard let hdcPath = hdcBinaryPath else { return nil }
+        return URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path
+    }
+    
     /// 启动hdc服务
     func startHdcServer() {
         guard !isServiceRunning else { return }
@@ -85,16 +91,34 @@ class HdcService: ObservableObject {
             return
         }
         
-        // 直接执行hdc命令，使用静态链接的库
+        // 使用脚本方法执行hdc命令，设置DYLD_LIBRARY_PATH指向hdc所在目录
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        
+        // 获取hdc工具所在目录
+        let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        
+        // 创建一个临时脚本来设置必要的环境变量并运行hdc
+        let tempScriptPath = NSTemporaryDirectory() + "run_hdc_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+        export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 运行hdc命令
+        "\(hdcPath)" start-server
+        
+        exit $?
+        """
+        
         do {
-            let task = Process()
+            try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
             
-            // 确保hdc工具有执行权限
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcPath)
-            
-            task.executableURL = URL(fileURLWithPath: hdcPath)
-            task.arguments = ["start-server"]
-            
+            task.arguments = [tempScriptPath]
             try task.run()
             
             // 设置为正在运行状态
@@ -102,9 +126,10 @@ class HdcService: ObservableObject {
                 self?.isServiceRunning = true
             }
             
-            // 启动服务后刷新设备列表
+            // 清理临时脚本
             DispatchQueue.global(qos: .utility).async {
                 task.waitUntilExit()
+                try? FileManager.default.removeItem(atPath: tempScriptPath)
                 
                 // 刷新设备列表
                 self.refreshDeviceList()
@@ -129,17 +154,38 @@ class HdcService: ObservableObject {
             return
         }
         
+        // 获取hdc工具所在目录
+        let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        
+        // 使用脚本方法停止服务
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        
+        let tempScriptPath = NSTemporaryDirectory() + "stop_hdc_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+        export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 运行hdc命令
+        "\(hdcPath)" kill-server
+        
+        exit $?
+        """
+        
         do {
-            let task = Process()
+            try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
             
-            // 确保hdc工具有执行权限
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcPath)
-            
-            task.executableURL = URL(fileURLWithPath: hdcPath)
-            task.arguments = ["kill-server"]
-            
+            task.arguments = [tempScriptPath]
             try task.run()
             task.waitUntilExit()
+            
+            // 清理临时脚本
+            try? FileManager.default.removeItem(atPath: tempScriptPath)
             
             // 确保在主线程更新UI相关的@Published属性
             DispatchQueue.main.async { [weak self] in
@@ -165,20 +211,42 @@ class HdcService: ObservableObject {
                 return
             }
             
+            // 获取hdc工具所在目录
+            let hdcDirectory = self.getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+            
             do {
+                // 使用脚本方法执行hdc命令
+                let tempScriptPath = NSTemporaryDirectory() + "list_devices_\(UUID().uuidString).sh"
+                let scriptContent = """
+                #!/bin/bash
+                # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+                export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+                
+                # 确保hdc有执行权限
+                chmod +x "\(hdcPath)"
+                
+                # 运行hdc命令
+                "\(hdcPath)" list devices
+                
+                exit $?
+                """
+                
+                try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
+                
                 let task = Process()
                 let pipe = Pipe()
                 
-                // 确保hdc工具有执行权限
-                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcPath)
-                
                 task.standardOutput = pipe
                 task.standardError = pipe
-                task.executableURL = URL(fileURLWithPath: hdcPath)
-                task.arguments = ["list", "devices"]
+                task.executableURL = URL(fileURLWithPath: "/bin/bash")
+                task.arguments = [tempScriptPath]
                 
                 try task.run()
                 task.waitUntilExit()
+                
+                // 清理临时脚本
+                try? FileManager.default.removeItem(atPath: tempScriptPath)
                 
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 
@@ -211,25 +279,46 @@ class HdcService: ObservableObject {
     
     /// 安装应用包到指定设备
     func installPackage(packagePath: String, deviceId: String) throws -> String {
-        // 直接执行安装命令
         guard let hdcPath = hdcBinaryPath else {
             throw NSError(domain: "HdcService", code: -1,
                          userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
         }
         
-        // 确保hdc工具有执行权限
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcPath)
+        // 获取hdc工具所在目录
+        let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        
+        // 使用脚本方法执行安装命令
+        let tempScriptPath = NSTemporaryDirectory() + "install_app_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+        export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 运行hdc命令
+        "\(hdcPath)" -t "\(deviceId)" install "\(packagePath)"
+        
+        exit $?
+        """
+        
+        try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
         
         let task = Process()
         let pipe = Pipe()
         
         task.standardOutput = pipe
         task.standardError = pipe
-        task.executableURL = URL(fileURLWithPath: hdcPath)
-        task.arguments = ["-t", deviceId, "install", packagePath]
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [tempScriptPath]
         
         try task.run()
         task.waitUntilExit()
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         
@@ -247,25 +336,46 @@ class HdcService: ObservableObject {
     
     /// 卸载应用
     func uninstallPackage(packageName: String, deviceId: String) throws -> String {
-        // 直接执行卸载命令
         guard let hdcPath = hdcBinaryPath else {
             throw NSError(domain: "HdcService", code: -1,
                          userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
         }
         
-        // 确保hdc工具有执行权限
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hdcPath)
+        // 获取hdc工具所在目录
+        let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        
+        // 使用脚本方法执行卸载命令
+        let tempScriptPath = NSTemporaryDirectory() + "uninstall_app_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+        export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 运行hdc命令
+        "\(hdcPath)" -t "\(deviceId)" uninstall "\(packageName)"
+        
+        exit $?
+        """
+        
+        try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
         
         let task = Process()
         let pipe = Pipe()
         
         task.standardOutput = pipe
         task.standardError = pipe
-        task.executableURL = URL(fileURLWithPath: hdcPath)
-        task.arguments = ["-t", deviceId, "uninstall", packageName]
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [tempScriptPath]
         
         try task.run()
         task.waitUntilExit()
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         
