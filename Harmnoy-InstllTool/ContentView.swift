@@ -35,6 +35,7 @@ struct ContentView: View {
                         .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5]))
                         .frame(height: 150)
                         .foregroundColor(.gray)
+                        .background(Color.red.opacity(0.05))
                     
                     if let path = installPackagePath {
                         VStack {
@@ -43,7 +44,7 @@ struct ContentView: View {
                             Text(path.components(separatedBy: "/").last ?? path)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                            Text("点击安装或拖入新文件")
+                            Text("点击选择新文件")
                                 .font(.caption)
                         }
                     } else {
@@ -51,9 +52,14 @@ struct ContentView: View {
                             Image(systemName: "arrow.down.doc.fill")
                                 .font(.largeTitle)
                             Text("拖放文件到此处")
+                                .padding(.bottom, 4)
+                            Text("或点击选择文件")
+                                .font(.caption)
+                                .foregroundColor(.blue)
                         }
                     }
                 }
+                .contentShape(Rectangle())
                 .padding()
                 .onDrop(of: FileDropService.supportedTypes, delegate: FileDropDelegate(onDrop: { url in
                     handleDroppedFile(url)
@@ -165,15 +171,28 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $showFilePickerDialog,
-            allowedContentTypes: FileDropService.supportedTypes,
+            allowedContentTypes: [
+                UTType(filenameExtension: "hap")!,
+                .package,
+                .archive
+            ],
             allowsMultipleSelection: false
         ) { result in
             switch result {
             case .success(let urls):
                 if let url = urls.first {
+                    // 开始安全访问文件
+                    let accessGranted = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if accessGranted {
+                            url.stopAccessingSecurityScopedResource()
+                        }
+                    }
+                    
                     handleSelectedFile(url)
                 }
             case .failure(let error):
+                print("文件选择错误: \(error)")
                 statusMessage = "选择文件失败: \(error.localizedDescription)"
             }
         }
@@ -230,13 +249,21 @@ struct ContentView: View {
     }
     
     private func handleSelectedFile(_ url: URL) {
-        guard FileDropService.isValidHarmonyPackage(url) else {
+        // 获取安全的文件路径访问
+        let secureURL = url.startAccessingSecurityScopedResource() ? url : url
+        defer {
+            if url.startAccessingSecurityScopedResource() {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        guard FileDropService.isValidHarmonyPackage(secureURL) else {
             statusMessage = "不是有效的HarmonyOS安装包(.hap)"
             return
         }
         
-        installPackagePath = url.path
-        statusMessage = "已选择安装包: \(url.lastPathComponent)"
+        installPackagePath = secureURL.path
+        statusMessage = "已选择安装包: \(secureURL.lastPathComponent)"
     }
     
     private func installToDevice(_ deviceId: String) {
