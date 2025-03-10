@@ -6,7 +6,7 @@ struct FileDropService {
         UTType.package,
         UTType.archive,
         UTType.item,
-        UTType(filenameExtension: "hap")!
+        UTType(filenameExtension: "app")!
     ]
     
     /// 检查文件是否为有效的HarmonyOS包

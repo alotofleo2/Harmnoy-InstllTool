@@ -65,8 +65,13 @@ struct ContentView: View {
                     handleDroppedFile(url)
                 }))
                 .onTapGesture {
+                    print("点击了文件上传区域")
                     showFilePickerDialog = true
                 }
+                .gesture(TapGesture().onEnded {
+                    print("添加的手势被触发")
+                    showFilePickerDialog = true
+                })
             }
             
             // 设备列表
@@ -174,15 +179,19 @@ struct ContentView: View {
             allowedContentTypes: [
                 UTType(filenameExtension: "hap")!,
                 .package,
-                .archive
+                .archive,
+                .data
             ],
             allowsMultipleSelection: false
         ) { result in
+            print("文件选择对话框结果: \(result)")
             switch result {
             case .success(let urls):
                 if let url = urls.first {
+                    print("选择的文件: \(url.path)")
                     // 开始安全访问文件
                     let accessGranted = url.startAccessingSecurityScopedResource()
+                    print("文件访问权限状态: \(accessGranted ? "已授予" : "未授予")")
                     defer {
                         if accessGranted {
                             url.stopAccessingSecurityScopedResource()
@@ -190,6 +199,8 @@ struct ContentView: View {
                     }
                     
                     handleSelectedFile(url)
+                } else {
+                    print("未选择任何文件")
                 }
             case .failure(let error):
                 print("文件选择错误: \(error)")
@@ -249,6 +260,9 @@ struct ContentView: View {
     }
     
     private func handleSelectedFile(_ url: URL) {
+        print("处理选择的文件: \(url.path)")
+        print("文件扩展名: \(url.pathExtension)")
+        
         // 获取安全的文件路径访问
         let secureURL = url.startAccessingSecurityScopedResource() ? url : url
         defer {
@@ -257,11 +271,21 @@ struct ContentView: View {
             }
         }
         
+        // 检查文件是否可访问
+        let fileManager = FileManager.default
+        if !fileManager.isReadableFile(atPath: secureURL.path) {
+            print("文件无法读取: \(secureURL.path)")
+            statusMessage = "文件无法读取，可能没有足够的权限"
+            return
+        }
+        
         guard FileDropService.isValidHarmonyPackage(secureURL) else {
+            print("文件不是有效的HarmonyOS安装包(.hap): \(secureURL.lastPathComponent)")
             statusMessage = "不是有效的HarmonyOS安装包(.hap)"
             return
         }
         
+        print("文件有效，设置安装路径: \(secureURL.path)")
         installPackagePath = secureURL.path
         statusMessage = "已选择安装包: \(secureURL.lastPathComponent)"
     }
@@ -278,19 +302,50 @@ struct ContentView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let result = try hdcService.installPackage(packagePath: packagePath, deviceId: deviceId)
+                print("安装结果: \(result)")
                 
                 DispatchQueue.main.async {
                     isLoading = false
                     if result.contains("Success") {
                         statusMessage = "安装成功"
+                    } else if result.contains("Not match target") || result.contains("check connect-key") {
+                        // 处理连接密钥错误
+                        statusMessage = "安装失败: 设备连接问题"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            let alert = NSAlert()
+                            alert.messageText = "设备连接错误"
+                            alert.informativeText = """
+                            无法连接到设备，可能原因:
+                            1. 设备未处于开发者模式
+                            2. 需要在设备上接受USB调试授权
+                            3. 连接密钥不匹配
+                            
+                            请检查:
+                            - 设备上是否有授权提示
+                            - 重新插拔USB连接
+                            - 确认设备已开启调试模式
+                            """
+                            alert.alertStyle = .warning
+                            alert.addButton(withTitle: "确定")
+                            alert.runModal()
+                        }
                     } else {
                         statusMessage = "安装失败: \(result)"
                     }
                 }
             } catch {
+                print("安装异常: \(error)")
                 DispatchQueue.main.async {
                     isLoading = false
-                    statusMessage = "安装失败: \(error.localizedDescription)"
+                    
+                    // 检查特定错误类型
+                    let errorString = error.localizedDescription
+                    if errorString.contains("Not match target") || errorString.contains("check connect-key") {
+                        // 处理连接密钥错误
+                        statusMessage = "安装失败: 设备连接问题，请检查设备连接状态和开发者模式"
+                    } else {
+                        statusMessage = "安装失败: \(errorString)"
+                    }
                 }
             }
         }

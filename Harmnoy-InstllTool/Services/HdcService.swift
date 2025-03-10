@@ -212,6 +212,7 @@ class HdcService: ObservableObject {
             
             // 获取hdc工具所在目录
             let hdcDirectory = self.getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+            print("刷新设备列表: 使用hdc目录 \(hdcDirectory)")
             
             do {
                 // 使用脚本方法执行hdc命令
@@ -226,8 +227,19 @@ class HdcService: ObservableObject {
                 # 确保hdc有执行权限
                 chmod +x "\(hdcPath)"
                 
-                # 运行hdc命令
-                "\(hdcPath)" list devices
+                # 打印当前环境变量
+                echo "环境变量: DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
+                echo "当前目录: $(pwd)"
+                echo "运行: \(hdcPath) list targets"
+                
+                # 运行hdc命令 - HarmonyOS使用list targets而不是list devices
+                "\(hdcPath)" list targets
+                
+                # 如果上面的命令失败，尝试替代命令
+                if [ $? -ne 0 ]; then
+                    echo "尝试替代命令: \(hdcPath) list"
+                    "\(hdcPath)" list
+                fi
                 
                 exit $?
                 """
@@ -243,6 +255,7 @@ class HdcService: ObservableObject {
                 task.executableURL = URL(fileURLWithPath: "/bin/bash")
                 task.arguments = [tempScriptPath]
                 
+                print("执行设备列表脚本: \(tempScriptPath)")
                 try task.run()
                 task.waitUntilExit()
                 
@@ -252,6 +265,8 @@ class HdcService: ObservableObject {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 
                 if let output = String(data: data, encoding: .utf8) {
+                    print("设备列表命令结果状态: \(task.terminationStatus)")
+                    
                     if task.terminationStatus != 0 {
                         throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
                                      userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
@@ -262,6 +277,7 @@ class HdcService: ObservableObject {
                     
                     // 确保在主线程更新UI相关的@Published属性
                     DispatchQueue.main.async {
+                        print("更新UI: 发现 \(deviceList.count) 个设备")
                         self.connectedDevices = deviceList
                         self.lastError = nil
                     }
@@ -270,10 +286,10 @@ class HdcService: ObservableObject {
                                  userInfo: [NSLocalizedDescriptionKey: "无法解析命令输出"])
                 }
             } catch {
+                print("获取设备列表错误: \(error)")
                 DispatchQueue.main.async {
                     self.lastError = "获取设备列表失败: \(error.localizedDescription)"
                 }
-                print("获取设备列表失败: \(error)")
             }
         }
     }
@@ -287,6 +303,9 @@ class HdcService: ObservableObject {
         
         // 获取hdc工具所在目录
         let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        print("安装应用包：使用hdc目录 \(hdcDirectory)")
+        print("安装应用包路径: \(packagePath)")
+        print("目标设备ID: \(deviceId)")
         
         // 使用脚本方法执行安装命令
         let tempScriptPath = NSTemporaryDirectory() + "install_app_\(UUID().uuidString).sh"
@@ -299,6 +318,12 @@ class HdcService: ObservableObject {
         
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
+        
+        # 打印当前环境变量
+        echo "环境变量: DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
+        echo "当前目录: $(pwd)"
+        echo "安装包路径: \(packagePath)"
+        echo "运行: \(hdcPath) -t \(deviceId) install \(packagePath)"
         
         # 运行hdc命令
         "\(hdcPath)" -t "\(deviceId)" install "\(packagePath)"
@@ -317,6 +342,7 @@ class HdcService: ObservableObject {
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = [tempScriptPath]
         
+        print("执行安装脚本: \(tempScriptPath)")
         try task.run()
         task.waitUntilExit()
         
@@ -324,8 +350,10 @@ class HdcService: ObservableObject {
         try? FileManager.default.removeItem(atPath: tempScriptPath)
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        print("安装命令结果状态: \(task.terminationStatus)")
         
         if let output = String(data: data, encoding: .utf8) {
+            print("安装命令输出: \(output)")
             if task.terminationStatus != 0 {
                 throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
                              userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
@@ -400,28 +428,40 @@ class HdcService: ObservableObject {
     private func parseDeviceListOutput(_ output: String) -> [Device] {
         var devices: [Device] = []
         
+        // 打印原始输出以便调试
+        print("设备列表原始输出:\n\(output)")
+        
         // 按行分割输出
         let lines = output.components(separatedBy: .newlines)
         
         for line in lines {
-            // 跳过空行和List of devices attached行
+            // 跳过空行和无关的标题行
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedLine.isEmpty || trimmedLine.contains("List of devices") {
+            if trimmedLine.isEmpty || trimmedLine.contains("List of devices") ||
+               trimmedLine.contains("OpenHarmony device connector") ||
+               trimmedLine.contains("global commands") ||
+               trimmedLine.contains("component commands") ||
+               trimmedLine.contains("task commands") {
                 continue
             }
             
             // 解析设备信息 (通常格式是: device_id device_state)
+            print("解析设备行: '\(trimmedLine)'")
             let components = trimmedLine.components(separatedBy: .whitespaces)
                 .filter { !$0.isEmpty }
             
-            if components.count >= 2 {
+            print("解析到组件: \(components)")
+            
+            if components.count >= 1 {
+                // HarmonyOS hdc可能有不同的输出格式，尝试解析多种格式
                 let deviceId = components[0]
-                let connectionState = components[1]
+                let connectionState = components.count >= 2 ? components[1] : "device"
                 
-                // 只添加已连接的设备
-                if connectionState == "device" {
-                    // 尝试获取设备名称 (实际实现可能需要额外的hdc命令)
-                    let deviceName = "HarmonyOS设备" // 在实际开发中,可以获取真实设备名称
+                // HarmonyOS设备可能显示为"已连接"或"device"或其他状态
+                // 只要不是明确的错误状态，就认为设备已连接
+                if !connectionState.contains("error") && !connectionState.contains("offline") {
+                    let deviceName = "HarmonyOS设备" 
+                    print("添加设备: ID=\(deviceId), 名称=\(deviceName)")
                     
                     devices.append(Device(deviceId: deviceId, 
                                          deviceName: deviceName,
@@ -430,6 +470,7 @@ class HdcService: ObservableObject {
             }
         }
         
+        print("解析到设备数量: \(devices.count)")
         return devices
     }
 } 
