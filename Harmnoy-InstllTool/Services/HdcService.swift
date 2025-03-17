@@ -30,8 +30,8 @@ class HdcService: ObservableObject {
     
     /// 查找hdc二进制文件
     private func findHdcBinary() {
-        // 优先查找应用程序Resources目录下的hdc/hdc
-        let appHdcPath = Bundle.main.bundlePath + "/Contents/Resources/hdc/hdc"
+        // 优先查找应用程序MacOS目录下的hdc
+        let appHdcPath = Bundle.main.bundlePath + "/Contents/Resources/hdc"
         if FileManager.default.fileExists(atPath: appHdcPath) {
             self.hdcBinaryPath = appHdcPath
             print("找到hdc工具: \(appHdcPath)")
@@ -42,9 +42,7 @@ class HdcService: ObservableObject {
         let possibleHdcPaths = [
             // 1. 开发目录下的ResourcesTools/hdc目录
             Bundle.main.bundlePath + "/../ResourcesTools/hdc/hdc",
-            // 2. 开发目录下的ResourcesTools/toolchains/hdc
-            Bundle.main.bundlePath + "/../ResourcesTools/toolchains/hdc",
-            // 3. 检查系统路径
+            // 2. 系统路径
             "/usr/local/bin/hdc",
         ]
         
@@ -57,18 +55,19 @@ class HdcService: ObservableObject {
             }
         }
         
-        print("警告: 未找到hdc工具。请确保将hdc工具放在ResourcesTools/hdc目录中")
+        print("警告: 未找到hdc工具。请确保将hdc工具放在正确的位置")
         
         // 确保在主线程更新UI相关的@Published属性
         DispatchQueue.main.async { [weak self] in
-            self?.lastError = "未找到hdc工具。请确保将hdc工具放在ResourcesTools/hdc目录中"
+            self?.lastError = "未找到hdc工具。请确保将hdc工具放在正确的位置"
         }
     }
     
     /// 获取hdc工具所在目录
     private func getHdcDirectory() -> String? {
         guard let hdcPath = hdcBinaryPath else { return nil }
-        return URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path
+        // 现在工具都在 MacOS 目录下，直接返回该目录
+        return Bundle.main.bundlePath + "/Contents/Resources"
     }
     
     /// 启动hdc服务
