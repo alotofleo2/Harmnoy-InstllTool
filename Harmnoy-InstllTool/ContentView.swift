@@ -91,15 +91,41 @@ struct ContentView: View {
                 
                 if hdcService.connectedDevices.isEmpty {
                     VStack(spacing: 10) {
-                        Text("未检测到已连接的设备")
-                            .foregroundColor(.gray)
-                            .padding()
-                        
-                        if let error = hdcService.lastError, error.contains("未找到hdc工具") {
+                        if let error = hdcService.lastError, error.contains("未检测到连接的设备") {
+                            Text("未检测到已连接的设备")
+                                .foregroundColor(.gray)
+                                .padding(.vertical, 5)
+                            Text("请确保您的HarmonyOS设备:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("• 已通过USB连接到电脑")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("• 已在设备上启用开发者选项")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("• 已在设备上授权USB调试")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Button("刷新设备列表") {
+                                hdcService.refreshDeviceList()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, 5)
+                        } else if let error = hdcService.lastError, error.contains("未找到hdc工具") {
+                            Text("未检测到已连接的设备")
+                                .foregroundColor(.gray)
+                                .padding()
+                            
                             Button("选择hdc工具") {
                                 showHdcPickerDialog = true
                             }
                             .buttonStyle(.borderedProminent)
+                        } else {
+                            Text("未检测到已连接的设备")
+                                .foregroundColor(.gray)
+                                .padding()
                         }
                     }
                 } else {

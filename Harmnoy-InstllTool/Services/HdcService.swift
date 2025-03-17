@@ -279,7 +279,13 @@ class HdcService: ObservableObject {
                     DispatchQueue.main.async {
                         print("更新UI: 发现 \(deviceList.count) 个设备")
                         self.connectedDevices = deviceList
-                        self.lastError = nil
+                        
+                        // 更新错误信息，如果设备列表为空但没有其他错误，设置友好的提示信息
+                        if deviceList.isEmpty && output.contains("[Empty]") {
+                            self.lastError = "未检测到连接的设备。请确保设备已通过USB连接并已打开调试模式。"
+                        } else {
+                            self.lastError = nil
+                        }
                     }
                 } else {
                     throw NSError(domain: "HdcService", code: -1,
@@ -745,6 +751,12 @@ class HdcService: ObservableObject {
         
         // 打印原始输出以便调试
         print("设备列表原始输出:\n\(output)")
+        
+        // 检查是否输出包含[Empty]，表示没有连接的设备
+        if output.contains("[Empty]") {
+            print("检测到[Empty]输出，表示没有连接的设备")
+            return []
+        }
         
         // 按行分割输出
         let lines = output.components(separatedBy: .newlines)
