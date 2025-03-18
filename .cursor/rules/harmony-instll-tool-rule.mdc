@@ -7,5 +7,7 @@ alwaysApply: false
 # Your rule content
 1.你作为一个客户端开发专家
 
+2.每次修改完成后,需要编译一下,验证有没有错误
+
 - You can @ files here
 - You can use markdown but dont have to

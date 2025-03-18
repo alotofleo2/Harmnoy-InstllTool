@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import ObjectiveC
 
 struct ContentView: View {
     @StateObject private var hdcService = HdcService()
@@ -17,6 +18,10 @@ struct ContentView: View {
     @State private var showHdcPickerDialog = false
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
+    @State private var downloadURL: String = ""
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Float = 0.0
+    @State private var downloadStatusMessage: String = ""
     
     var body: some View {
         VStack(spacing: 20) {
@@ -29,6 +34,40 @@ struct ContentView: View {
             VStack {
                 Text("拖入HarmonyOS安装包(.app文件)")
                     .font(.headline)
+                
+                // URL下载功能
+                VStack {
+                    HStack {
+                        TextField("输入.hap结尾的下载链接", text: $downloadURL)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        
+                        Button(action: {
+                            downloadHapPackage()
+                        }) {
+                            Text("下载")
+                        }
+                        .disabled(downloadURL.isEmpty || !downloadURL.lowercased().hasSuffix(".hap") || isDownloading)
+                    }
+                    
+                    if isDownloading {
+                        HStack {
+                            Text("下载中: \(downloadURL)")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .font(.caption)
+                            Spacer()
+                            Text("\(Int(downloadProgress * 100))%")
+                                .font(.caption)
+                        }
+                        
+                        ProgressView(value: downloadProgress)
+                    } else if !downloadStatusMessage.isEmpty {
+                        Text(downloadStatusMessage)
+                            .font(.caption)
+                            .foregroundColor(downloadStatusMessage.contains("失败") ? .red : .green)
+                    }
+                }
+                .padding(.bottom, 10)
                 
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
@@ -766,6 +805,91 @@ struct ContentView: View {
             handleSelectedFile(selectedURL)
         } else {
             print("文件选择取消")
+        }
+    }
+    
+    // 下载HAP包
+    private func downloadHapPackage() {
+        guard !downloadURL.isEmpty, downloadURL.lowercased().hasSuffix(".hap") else {
+            downloadStatusMessage = "请输入有效的.hap下载链接"
+            return
+        }
+        
+        // 开始下载流程
+        isDownloading = true
+        downloadProgress = 0.0
+        downloadStatusMessage = "正在下载..."
+        
+        // 创建下载目录
+        let fileManager = FileManager.default
+        do {
+            let appSupportDir = try fileManager.url(for: .applicationSupportDirectory,
+                                                 in: .userDomainMask,
+                                                 appropriateFor: nil,
+                                                 create: true)
+            
+            let downloadDir = appSupportDir.appendingPathComponent("HarmonyInstallTool/Downloads", isDirectory: true)
+            try fileManager.createDirectory(at: downloadDir, withIntermediateDirectories: true, attributes: nil)
+            
+            // 获取文件名
+            let fileName = URL(string: downloadURL)?.lastPathComponent ?? "downloaded-\(UUID().uuidString).hap"
+            let destinationURL = downloadDir.appendingPathComponent(fileName)
+            
+            // 如果文件已存在，先删除
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            
+            // 创建下载任务
+            let downloadTask = URLSession.shared.downloadTask(with: URL(string: downloadURL)!) { tempURL, response, error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    
+                    if let error = error {
+                        self.downloadStatusMessage = "下载失败: \(error.localizedDescription)"
+                        return
+                    }
+                    
+                    guard let tempURL = tempURL else {
+                        self.downloadStatusMessage = "下载失败: 无法获取下载文件"
+                        return
+                    }
+                    
+                    do {
+                        // 移动临时文件到目标位置
+                        try fileManager.moveItem(at: tempURL, to: destinationURL)
+                        
+                        // 检查文件是否有效的HAP包
+                        if FileDropService.isValidHarmonyPackage(destinationURL) {
+                            self.downloadStatusMessage = "下载成功: \(fileName)"
+                            
+                            // 设置为安装路径
+                            self.installPackagePath = destinationURL.path
+                            self.statusMessage = "已选择安装包: \(fileName)"
+                        } else {
+                            self.downloadStatusMessage = "下载的文件不是有效的HarmonyOS安装包"
+                        }
+                    } catch {
+                        self.downloadStatusMessage = "处理下载文件失败: \(error.localizedDescription)"
+                    }
+                }
+            }
+            
+            // 设置进度观察
+            let observation = downloadTask.progress.observe(\.fractionCompleted) { progress, _ in
+                DispatchQueue.main.async {
+                    self.downloadProgress = Float(progress.fractionCompleted)
+                }
+            }
+            
+            // 保存observation引用以防止过早释放
+            objc_setAssociatedObject(downloadTask, "progressObservation", observation, .OBJC_ASSOCIATION_RETAIN)
+            
+            // 开始下载
+            downloadTask.resume()
+        } catch {
+            isDownloading = false
+            downloadStatusMessage = "准备下载失败: \(error.localizedDescription)"
         }
     }
 }

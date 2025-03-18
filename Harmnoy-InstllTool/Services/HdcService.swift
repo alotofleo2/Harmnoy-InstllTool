@@ -387,33 +387,33 @@ class HdcService: ObservableObject {
         
         # 1. 先停止应用
         echo "步骤1: 停止应用"
-        "\(hdcPath)" shell aa force-stop \(bundleId)
+        "\(hdcPath)" -t \(deviceId) shell aa force-stop \(bundleId)
         
         # 2. 在设备上创建临时目录
         echo "步骤2: 创建临时目录"
-        "\(hdcPath)" shell mkdir -p \(tempDevicePath)
+        "\(hdcPath)" -t \(deviceId) shell mkdir -p \(tempDevicePath)
         
         # 3. 发送HAP文件到设备
         echo "步骤3: 发送HAP文件到设备"
-        "\(hdcPath)" file send "\(hapPath)" \(tempDevicePath)
+        "\(hdcPath)" -t \(deviceId) file send "\(hapPath)" \(tempDevicePath)
         if [ $? -ne 0 ]; then
             echo "错误: 无法发送HAP文件到设备"
-            "\(hdcPath)" shell rm -rf \(tempDevicePath)
+            "\(hdcPath)" -t \(deviceId) shell rm -rf \(tempDevicePath)
             exit 1
         fi
         
         # 4. 安装应用 - 使用bm install命令
         echo "步骤4: 安装应用"
-        "\(hdcPath)" shell bm install -p \(tempDevicePath)
+        "\(hdcPath)" -t \(deviceId) shell bm install -p \(tempDevicePath)
         INSTALL_RESULT=$?
         
         # 5. 清理临时文件
         echo "步骤5: 清理临时文件"
-        "\(hdcPath)" shell rm -rf \(tempDevicePath)
+        "\(hdcPath)" -t \(deviceId) shell rm -rf \(tempDevicePath)
         
         # 6. 尝试启动应用
         echo "步骤6: 尝试启动应用"
-        "\(hdcPath)" shell aa start -a EntryAbility -b \(bundleId)
+        "\(hdcPath)" -t \(deviceId) shell aa start -a EntryAbility -b \(bundleId)
         # 启动应用的结果不影响整体安装结果
         
         # 检查安装结果，不再尝试启动应用
