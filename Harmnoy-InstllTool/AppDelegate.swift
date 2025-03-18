@@ -1,11 +1,12 @@
 import SwiftUI
+import Foundation
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private let hdcService = HdcService()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 应用程序启动完成时调用
-        print("应用程序已启动")
+        print("应用程序启动 - 开始初始化")
         
         // 在启动时设置hdc工具
         setupHdcTool()
@@ -49,16 +50,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("错误: 未在应用程序MacOS目录找到hdc工具")
         print("  - 查找路径: \(hdcPath)")
         print("  - 请确保完整的hdc工具已添加到Xcode项目中")
-        
-        // 创建一个警告对话框
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = "未找到hdc工具"
-            alert.informativeText = "应用无法在MacOS目录找到hdc工具。请确保hdc及其所有文件已正确添加到项目中并包含在应用bundle中。"
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: "确定")
-            alert.runModal()
-        }
+//        
+//        // 创建一个警告对话框
+//        DispatchQueue.main.async {
+//            let alert = NSAlert()
+//            alert.messageText = "未找到hdc工具"
+//            alert.informativeText = "应用无法在MacOS目录找到hdc工具。请确保hdc及其所有文件已正确添加到项目中并包含在应用bundle中。"
+//            alert.alertStyle = .critical
+//            alert.addButton(withTitle: "确定")
+//            alert.runModal()
+//        }
     }
     
     /// 获取hdc工具路径
@@ -83,5 +84,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         return nil
+    }
+    
+    /// 执行命令并返回输出
+    private func runCommandWithOutput(_ command: String) -> String {
+        let task = Process()
+        let pipe = Pipe()
+        
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.arguments = ["-c", command]
+        task.launchPath = "/bin/bash"
+        
+        task.launch()
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        
+        task.waitUntilExit()
+        return output
+    }
+    
+    /// 执行命令
+    private func runCommand(_ command: String) -> String {
+        return runCommandWithOutput(command)
+    }
+    
+    /// 显示错误对话框
+    private func showError(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 } 

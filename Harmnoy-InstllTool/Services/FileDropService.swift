@@ -6,16 +6,17 @@ struct FileDropService {
         UTType.package,
         UTType.archive,
         UTType.item,
-        UTType(filenameExtension: "app")!
+        UTType(filenameExtension: "app")!,
+        UTType(filenameExtension: "hap")!
     ]
     
     /// 检查文件是否为有效的HarmonyOS包
     static func isValidHarmonyPackage(_ url: URL) -> Bool {
-        // 检查文件扩展名是否为.app
+        // 检查文件扩展名是否为.app或.hap
         let fileExtension = url.pathExtension.lowercased()
         
-        // 只接受.app文件
-        if fileExtension == "app" {
+        // 接受.app和.hap文件
+        if fileExtension == "app" || fileExtension == "hap" {
             let fileManager = FileManager.default
             var isDirectory: ObjCBool = false
             
@@ -97,7 +98,7 @@ struct FileDropService {
             return true
         }
         
-        print("不支持的文件类型: .\(fileExtension)，仅支持.app文件")
+        print("不支持的文件类型: .\(fileExtension)，仅支持.app和.hap文件")
         return false
     }
 }

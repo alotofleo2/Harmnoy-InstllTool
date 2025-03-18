@@ -1,4 +1,5 @@
 import Foundation
+import AppKit  // 添加AppKit导入以使用NSApp
 
 class HdcService: ObservableObject {
     @Published var connectedDevices: [Device] = []
@@ -302,137 +303,72 @@ class HdcService: ObservableObject {
     /// 安装应用包到指定设备
     func installPackage(packagePath: String, deviceId: String) throws -> String {
         guard let hdcPath = hdcBinaryPath else {
-            throw NSError(domain: "HdcService", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
+            throw NSError(domain: "HdcService", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法启动hdc服务: 未找到hdc工具"])
         }
         
-        // 检查安装包是否存在
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: packagePath) else {
-            throw NSError(domain: "HdcService", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "安装包文件不存在: \(packagePath)"])
-        }
-        
-        print("原始文件路径: \(packagePath)")
-        print("路径是否包含临时目录标记: \(packagePath.contains("/var/folders/") || packagePath.contains("/tmp/") ? "是" : "否")")
-        print("文件读取权限: \(fileManager.isReadableFile(atPath: packagePath) ? "可读" : "不可读")")
-        
-        // 将文件复制到一个临时工作目录
-        let baseWorkDir = NSTemporaryDirectory() + "harmony_install_\(UUID().uuidString)"
-        let workDir = baseWorkDir + "/workspace"
-        do {
-            try fileManager.createDirectory(atPath: workDir, withIntermediateDirectories: true)
-            print("创建工作目录: \(workDir)")
-        } catch {
-            print("创建工作目录失败: \(error)")
-            throw NSError(domain: "HdcService", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "无法创建工作目录: \(error.localizedDescription)"])
-        }
-        
-        // 源文件路径和目标文件路径
-        let url = URL(fileURLWithPath: packagePath)
-        let fileName = url.lastPathComponent
-        let destPath = workDir + "/" + fileName
-        _ = URL(fileURLWithPath: destPath)
-        
-        // 复制源文件到工作目录
-        do {
-            // 总是使用命令行执行复制，确保权限被保留
-            print("使用命令行复制文件到工作目录...")
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/cp")
-            
-            // 检查是否为目录
-            var isDirectory: ObjCBool = false
-            fileManager.fileExists(atPath: packagePath, isDirectory: &isDirectory)
-            
-            if isDirectory.boolValue {
-                // 对于目录，使用-R参数递归复制
-                task.arguments = ["-R", packagePath, destPath]
-                print("源文件是目录，使用递归复制: cp -R \(packagePath) \(destPath)")
-            } else {
-                // 对于普通文件，不使用-R参数
-                task.arguments = [packagePath, destPath]
-                print("源文件是普通文件: cp \(packagePath) \(destPath)")
-            }
-            
-            try task.run()
-            task.waitUntilExit()
-            
-            if task.terminationStatus != 0 {
-                print("复制文件失败，退出状态码: \(task.terminationStatus)")
-                throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
-                             userInfo: [NSLocalizedDescriptionKey: "复制文件到工作目录失败，命令退出状态码: \(task.terminationStatus)"])
-            }
-            
-            print("复制命令完成，状态码: \(task.terminationStatus)")
-            print("成功复制文件到工作目录: \(destPath)")
-        } catch {
-            print("复制文件到工作目录失败: \(error)")
-            throw NSError(domain: "HdcService", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "无法复制安装包到工作目录: \(error.localizedDescription)"])
-        }
-        
-        // 确保文件可读
-        guard fileManager.isReadableFile(atPath: destPath) else {
-            print("复制后的文件不可读: \(destPath)")
-            // 尝试修复权限
-            do {
-                print("尝试修复文件权限...")
-                let task = Process()
-                task.executableURL = URL(fileURLWithPath: "/bin/chmod")
-                task.arguments = ["-R", "755", destPath]
-                try task.run()
-                task.waitUntilExit()
-                
-                if !fileManager.isReadableFile(atPath: destPath) {
-                    throw NSError(domain: "HdcService", code: -1,
-                                 userInfo: [NSLocalizedDescriptionKey: "权限修复后仍无法读取文件: \(destPath)"])
-                }
-                print("权限修复成功")
-            } catch {
-                print("修复权限失败: \(error)")
-                throw NSError(domain: "HdcService", code: -1,
-                             userInfo: [NSLocalizedDescriptionKey: "复制后的安装包无法读取且无法修复权限: \(destPath)"])
-            }
-            return "" // 永远不会执行到这里，因为上面的 catch 块中会抛出异常
-        }
+        print("开始使用鸿蒙IDE方式安装...")
         
         // 获取hdc工具所在目录
         let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
-        print("安装应用包：使用hdc目录 \(hdcDirectory)")
-        print("复制后的安装包路径: \(destPath)")
-        print("目标设备ID: \(deviceId)")
         
-        // 检查文件详细信息
-        var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: destPath, isDirectory: &isDirectory) {
-            print("安装包类型: \(isDirectory.boolValue ? "目录" : "普通文件")")
-        }
+        // 查找或准备HAP文件
+        let hapPath: String
+        var tempExtractDir: String? = nil
         
-        // 查看目录内容（如果是目录）
-        if isDirectory.boolValue {
-            do {
-                let contents = try fileManager.contentsOfDirectory(atPath: destPath)
-                print("安装包内容文件数: \(contents.count)")
-                if !contents.isEmpty {
-                    print("部分内容: \(contents.prefix(5).joined(separator: ", "))")
+        // 检查是否直接是HAP文件
+        if packagePath.lowercased().hasSuffix(".hap") {
+            hapPath = packagePath
+            print("直接使用HAP文件: \(hapPath)")
+        } else {
+            // 检查是否是ZIP文件
+            let fileType = runCommandWithOutput("/usr/bin/file", args: [packagePath])
+            if fileType.contains("Zip archive") {
+                // 解压ZIP文件
+                tempExtractDir = NSTemporaryDirectory() + "HapExtract_" + UUID().uuidString
+                try FileManager.default.createDirectory(atPath: tempExtractDir!, withIntermediateDirectories: true, attributes: nil)
+                
+                print("解压应用包到: \(tempExtractDir!)")
+                let unzipResult = runCommandWithOutput("/usr/bin/unzip", args: ["-o", packagePath, "-d", tempExtractDir!])
+                print("解压结果: \(unzipResult.prefix(200))...")
+                
+                // 在解压目录中查找HAP文件
+                if let foundHapPath = findHapInExtractedDir(tempExtractDir!) {
+                    hapPath = foundHapPath
+                    print("在解压目录中找到HAP文件: \(hapPath)")
+                } else {
+                    throw NSError(domain: "HdcService", code: 2, userInfo: [NSLocalizedDescriptionKey: "未在解压目录中找到HAP文件"])
                 }
-            } catch {
-                print("无法查看安装包内容: \(error)")
+            } else {
+                // 如果是目录，尝试在其中查找HAP文件
+                if let foundHapPath = findHapFile(in: packagePath) {
+                    hapPath = foundHapPath
+                    print("在路径中找到HAP文件: \(hapPath)")
+                } else {
+                    throw NSError(domain: "HdcService", code: 2, userInfo: [NSLocalizedDescriptionKey: "未找到有效的HAP文件"])
+                }
             }
         }
         
-        // 为安装操作创建脚本目录
-        let scriptDir = baseWorkDir + "/scripts"
-        do {
-            try fileManager.createDirectory(atPath: scriptDir, withIntermediateDirectories: true)
-        } catch {
-            print("创建脚本目录失败: \(error)")
+        // 确保文件可访问
+        if !FileManager.default.isReadableFile(atPath: hapPath) {
+            throw NSError(domain: "HdcService", code: 3, userInfo: [NSLocalizedDescriptionKey: "HAP文件无法访问: \(hapPath)"])
         }
         
-        // 使用脚本方法执行安装命令
-        let tempScriptPath = scriptDir + "/install_app.sh"
+        // 从文件名或内容推测包ID
+        let bundleId = extractBundleId(from: hapPath)
+        print("使用包ID: \(bundleId)")
+        
+        // 创建临时脚本
+        let tempScriptDir = NSTemporaryDirectory() + "HdcScripts"
+        try FileManager.default.createDirectory(atPath: tempScriptDir, withIntermediateDirectories: true, attributes: nil)
+        let uuid = UUID().uuidString
+        let tempScriptPath = "\(tempScriptDir)/install_app_\(uuid).sh"
+        
+        // 创建一个随机目录名用于设备上的临时目录
+        let randomDirName = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(32)
+        let tempDevicePath = "data/local/tmp/\(randomDirName)"
+        
+        // 创建安装脚本 - 完全按照鸿蒙IDE的命令顺序，但不包括启动应用
         let scriptContent = """
         #!/bin/bash
         # 设置DYLD_LIBRARY_PATH指向hdc所在目录
@@ -443,196 +379,57 @@ class HdcService: ObservableObject {
         # 确保hdc有执行权限
         chmod +x "\(hdcPath)"
         
-        # 打印当前环境变量
-        echo "环境变量: DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
-        echo "当前目录: $(pwd)"
-        echo "安装包路径: \(destPath)"
+        echo "====== 开始安装应用（鸿蒙IDE方式）======"
+        echo "设备ID: \(deviceId)"
+        echo "HAP路径: \(hapPath)"
+        echo "包ID: \(bundleId)"
+        echo "临时目录: \(tempDevicePath)"
         
-        # 直接显示文件详细信息
-        echo "--- 文件信息 ---"
-        ls -la "\(destPath)"
-        echo "----------------"
+        # 1. 先停止应用
+        echo "步骤1: 停止应用"
+        "\(hdcPath)" shell aa force-stop \(bundleId)
         
-        # 检查文件访问权限
-        if [ ! -r "\(destPath)" ]; then
-            echo "警告: 文件访问权限不足，尝试修复..."
-            chmod -R a+rx "\(destPath)"
-            if [ ! -r "\(destPath)" ]; then
-                echo "错误: 修复权限失败，文件仍然无法读取"
-                exit 1
-            fi
-            echo "已成功修复文件权限"
-        fi
+        # 2. 在设备上创建临时目录
+        echo "步骤2: 创建临时目录"
+        "\(hdcPath)" shell mkdir -p \(tempDevicePath)
         
-        # 检查文件类型
-        echo "检查文件类型..."
-        FILE_TYPE=$(file "\(destPath)")
-        echo "文件类型结果: $FILE_TYPE"
-        
-        # 如果是ZIP文件且不是目录，先解压
-        if [ ! -d "\(destPath)" ] && [[ "$FILE_TYPE" == *"Zip archive"* || "$FILE_TYPE" == *"archive data"* ]]; then
-            echo "检测到ZIP格式文件，尝试解压..."
-            EXTRACT_DIR="\(workDir)/extracted"
-            mkdir -p "$EXTRACT_DIR"
-            
-            # 尝试使用unzip命令解压
-            unzip -o "\(destPath)" -d "$EXTRACT_DIR" > /dev/null 2>&1
-            UNZIP_RESULT=$?
-            
-            if [ $UNZIP_RESULT -eq 0 ]; then
-                echo "解压成功，检查解压后的内容..."
-                ls -la "$EXTRACT_DIR"
-                
-                # 检查是否有.hap文件
-                HAP_FILES=$(find "$EXTRACT_DIR" -name "*.hap" -o -name "*.HAP")
-                if [ ! -z "$HAP_FILES" ]; then
-                    echo "在解压目录中找到.hap文件:"
-                    echo "$HAP_FILES"
-                    FIRST_HAP=$(echo "$HAP_FILES" | head -1)
-                    echo "使用第一个.hap文件安装: $FIRST_HAP"
-                    INSTALL_PATH="$FIRST_HAP"
-                else
-                    # 尝试找.app目录
-                    APP_DIRS=$(find "$EXTRACT_DIR" -name "*.app" -type d)
-                    if [ ! -z "$APP_DIRS" ]; then
-                        echo "在解压目录中找到.app目录:"
-                        echo "$APP_DIRS"
-                        FIRST_APP=$(echo "$APP_DIRS" | head -1)
-                        echo "使用第一个.app目录安装: $FIRST_APP"
-                        INSTALL_PATH="$FIRST_APP"
-                    else
-                        echo "解压后没有找到.hap文件或.app目录，使用整个解压目录"
-                        INSTALL_PATH="$EXTRACT_DIR"
-                    fi
-                fi
-            else
-                echo "解压失败，继续使用原始文件安装"
-                INSTALL_PATH="\(destPath)"
-            fi
-        else
-            # 对于目录或非ZIP文件，直接使用原始路径
-            echo "使用原始文件路径安装"
-            INSTALL_PATH="\(destPath)"
-        fi
-        
-        # 检查安装包文件
-        echo "检查安装包文件:"
-        if [ -d "$INSTALL_PATH" ]; then
-            echo "是目录，列出主要文件:"
-            find "$INSTALL_PATH" -type f | head -10
-            
-            # 检查文件结构是否符合预期
-            echo "检查是否为有效的应用包结构..."
-            if [ -d "$INSTALL_PATH/AppEntry" ] || [ -d "$INSTALL_PATH/entry" ] || [ -d "$INSTALL_PATH/META-INF" ] || [ -d "$INSTALL_PATH/libs" ]; then
-                echo "发现标准应用入口目录结构"
-            else
-                echo "警告: 未找到标准应用入口目录结构，列出目录内容:"
-                ls -la "$INSTALL_PATH"
-            fi
-        else
-            echo "是文件，文件信息:"
-            ls -la "$INSTALL_PATH"
-            echo "文件类型:"
-            file "$INSTALL_PATH"
-        fi
-        
-        # 确保文件有正确的访问权限
-        echo "确保文件有正确的访问权限..."
-        chmod -R a+rx "$INSTALL_PATH"
-        
-        # 尝试多种安装方式，从最可能成功的开始
-        echo "----------------------------------------"
-        echo "尝试安装方法 1: 标准安装命令"
-        echo "运行: \(hdcPath) -t \(deviceId) install $INSTALL_PATH"
-        "\(hdcPath)" -t "\(deviceId)" install "$INSTALL_PATH"
-        RESULT=$?
-        
-        # 如果安装失败，尝试用不同的方式
-        if [ $RESULT -ne 0 ] || grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${INSTALL_PATH}" 2>&1))" || grep -q "Not any installation package was found" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${INSTALL_PATH}" 2>&1))"; then
-            echo "----------------------------------------"
-            echo "首次安装尝试失败，尝试方法 2: app install命令"
-            echo "运行: \(hdcPath) -t \(deviceId) app install $INSTALL_PATH"
-            "\(hdcPath)" -t "\(deviceId)" app install "$INSTALL_PATH"
-            RESULT=$?
-            
-            # 如果仍然失败，尝试使用绝对路径和其他选项
-            if [ $RESULT -ne 0 ] || grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" app install "${INSTALL_PATH}" 2>&1))"; then
-                echo "----------------------------------------"
-                echo "方法 2失败，尝试方法 3: 使用相对路径"
-                
-                # 获取相对路径
-                if [ -d "$INSTALL_PATH" ]; then
-                    cd $(dirname "$INSTALL_PATH")
-                    REL_PATH="./$(basename "$INSTALL_PATH")"
-                else
-                    cd $(dirname "$INSTALL_PATH")
-                    REL_PATH="./$(basename "$INSTALL_PATH")"
-                fi
-                
-                echo "当前目录已切换到: $(pwd)"
-                echo "相对路径: $REL_PATH"
-                
-                echo "运行: \(hdcPath) -t \(deviceId) install $REL_PATH"
-                "\(hdcPath)" -t "\(deviceId)" install "$REL_PATH"
-                RESULT=$?
-                
-                # 如果仍然失败，尝试bm安装命令
-                if [ $RESULT -ne 0 ] || grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${REL_PATH}" 2>&1))"; then
-                    echo "----------------------------------------"
-                    echo "方法 3失败，尝试方法 4: 使用bm install命令"
-                    echo "运行: \(hdcPath) -t \(deviceId) bm install -p $INSTALL_PATH"
-                    "\(hdcPath)" -t "\(deviceId)" bm install -p "$INSTALL_PATH"
-                    RESULT=$?
-                    
-                    # 如果所有方法都失败，尝试检查目录内的具体文件
-                    if [ $RESULT -ne 0 ] || grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" bm install -p "${INSTALL_PATH}" 2>&1))"; then
-                        echo "----------------------------------------"
-                        echo "方法 4失败，尝试方法 5: 搜索.hap文件并安装"
-                        HAP_FILES=$(find "$(dirname "$INSTALL_PATH")" -name "*.hap" -o -name "*.HAP")
-                        if [ ! -z "$HAP_FILES" ]; then
-                            echo "找到以下.hap文件:"
-                            echo "$HAP_FILES"
-                            
-                            # 尝试安装找到的第一个.hap文件
-                            FIRST_HAP=$(echo "$HAP_FILES" | head -1)
-                            echo "尝试安装: $FIRST_HAP"
-                            "\(hdcPath)" -t "\(deviceId)" install "$FIRST_HAP"
-                            RESULT=$?
-                            
-                            if [ $RESULT -ne 0 ] || grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${FIRST_HAP}" 2>&1))"; then
-                                echo "尝试使用bm install命令安装hap文件"
-                                "\(hdcPath)" -t "\(deviceId)" bm install -p "$FIRST_HAP"
-                                RESULT=$?
-                            fi
-                        else
-                            echo "未找到任何.hap文件"
-                            
-                            # 最后尝试使用jar命令检查是否为有效的HAP包
-                            if [ -f "$INSTALL_PATH" ]; then
-                                echo "尝试jar命令列出文件内容"
-                                jar -tf "$INSTALL_PATH" || echo "jar命令失败，可能不是有效的HAP包"
-                            fi
-                        fi
-                    fi
-                fi
-            fi
-        fi
-        
-        echo "----------------------------------------"
-        echo "安装过程结束，最终结果状态: $RESULT"
-        if [ $RESULT -eq 0 ] && ! grep -q "\\[Fail\\]" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${INSTALL_PATH}" 2>&1))" && ! grep -q "Not any installation package was found" <<< "$(echo $("${hdcPath}" -t "${deviceId}" install "${INSTALL_PATH}" 2>&1))"; then
-            echo "安装成功完成"
-        else
-            echo "安装失败，状态码: $RESULT"
+        # 3. 发送HAP文件到设备
+        echo "步骤3: 发送HAP文件到设备"
+        "\(hdcPath)" file send "\(hapPath)" \(tempDevicePath)
+        if [ $? -ne 0 ]; then
+            echo "错误: 无法发送HAP文件到设备"
+            "\(hdcPath)" shell rm -rf \(tempDevicePath)
             exit 1
         fi
         
-        exit $RESULT
+        # 4. 安装应用 - 使用bm install命令
+        echo "步骤4: 安装应用"
+        "\(hdcPath)" shell bm install -p \(tempDevicePath)
+        INSTALL_RESULT=$?
+        
+        # 5. 清理临时文件
+        echo "步骤5: 清理临时文件"
+        "\(hdcPath)" shell rm -rf \(tempDevicePath)
+        
+        # 6. 尝试启动应用
+        echo "步骤6: 尝试启动应用"
+        "\(hdcPath)" shell aa start -a EntryAbility -b \(bundleId)
+        # 启动应用的结果不影响整体安装结果
+        
+        # 检查安装结果，不再尝试启动应用
+        if [ $INSTALL_RESULT -eq 0 ]; then
+            echo "安装成功 - 应用ID: \(bundleId)"
+            exit 0
+        else
+            echo "安装失败 - 状态码: $INSTALL_RESULT"
+            exit 1
+        fi
         """
         
         try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
         
+        // 执行脚本
         let task = Process()
         let pipe = Pipe()
         
@@ -640,48 +437,47 @@ class HdcService: ObservableObject {
         task.standardError = pipe
         task.executableURL = URL(fileURLWithPath: "/bin/bash")
         task.arguments = [tempScriptPath]
-        task.currentDirectoryURL = URL(fileURLWithPath: scriptDir)
         
-        print("执行安装脚本: \(tempScriptPath)")
         try task.run()
         task.waitUntilExit()
         
-        // 收集输出
+        // 清理临时目录
+        if let extractDir = tempExtractDir {
+            try? FileManager.default.removeItem(atPath: extractDir)
+        }
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
+        
+        // 获取输出
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output: String
-        if let str = String(data: data, encoding: .utf8) {
-            output = str
-            print("安装命令输出: \(output)")
-        } else {
-            output = "无法解析命令输出"
-            print(output)
+        let output = String(data: data, encoding: .utf8) ?? ""
+        print("安装脚本输出: \(output)")
+        
+        // 检查结果
+        let statusSuccess = task.terminationStatus == 0
+        let outputHasError = output.contains("error:") || 
+                             output.contains("fail") || 
+                             output.contains("no signature") ||
+                             output.contains("failed to install")
+        
+        // 即使状态码为0，也检查输出是否包含错误信息
+        if !statusSuccess || outputHasError {
+            var errorMessage = "安装失败"
+            if outputHasError, let errorLine = output.components(separatedBy: .newlines).first(where: { 
+                $0.contains("error:") || 
+                $0.contains("failed to install") || 
+                $0.contains("no signature")
+            }) {
+                errorMessage = "安装失败: \(errorLine.trimmingCharacters(in: .whitespacesAndNewlines))"
+            } else if !statusSuccess {
+                errorMessage = "安装命令执行失败，状态码: \(task.terminationStatus)"
+            }
+            
+            throw NSError(domain: "HdcService", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMessage])
         }
         
-        print("安装命令结果状态: \(task.terminationStatus)")
-        
-        // 清理临时资源
-        do {
-            try FileManager.default.removeItem(atPath: baseWorkDir)
-            print("已清理临时工作目录")
-        } catch {
-            print("清理临时工作目录失败: \(error)")
-        }
-        
-        // 判断安装结果，即使状态码为0，也要检查输出中是否包含错误信息
-        if task.terminationStatus != 0 {
-            throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
-                         userInfo: [NSLocalizedDescriptionKey: "命令执行失败: \(output)"])
-        }
-        
-        // 检查输出中是否包含[Fail]或者特定错误信息
-        if output.contains("[Fail]") || output.contains("Not any installation package was found") {
-            // 即使状态码为0，如果包含明确的失败信息，也应视为失败
-            print("检测到输出中包含失败信息，尽管状态码为0")
-            throw NSError(domain: "HdcService", code: -1,
-                         userInfo: [NSLocalizedDescriptionKey: "安装失败: \(output.components(separatedBy: .newlines).first(where: { $0.contains("[Fail]") }) ?? "未找到有效的安装包")"])
-        }
-        
-        return output
+        return "Success: 已成功安装应用到设备"
     }
     
     /// 卸载应用
@@ -906,5 +702,195 @@ class HdcService: ObservableObject {
         }
         
         return false
+    }
+    
+    // 查找目录中的HAP文件
+    private func findHapFile(in directory: String) -> String? {
+        let fileManager = FileManager.default
+        do {
+            // 先检查是否直接是HAP文件
+            if directory.lowercased().hasSuffix(".hap") && fileManager.fileExists(atPath: directory) {
+                return directory
+            }
+            
+            // 如果是Zip文件，先解压
+            let fileType = runCommandWithOutput("/usr/bin/file", args: [directory])
+            if fileType.contains("Zip archive") {
+                // 创建解压目录
+                let extractDir = NSTemporaryDirectory() + "HapExtract_" + UUID().uuidString
+                try fileManager.createDirectory(atPath: extractDir, withIntermediateDirectories: true, attributes: nil)
+                
+                print("解压应用包到: \(extractDir)")
+                let unzipResult = runCommandWithOutput("/usr/bin/unzip", args: ["-o", directory, "-d", extractDir])
+                print("解压结果: \(unzipResult)")
+                
+                // 查找解压后的目录中的HAP文件
+                if let hapFile = findHapInExtractedDir(extractDir) {
+                    return hapFile
+                }
+            }
+            
+            // 如果是目录，遍历查找HAP文件
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: directory, isDirectory: &isDirectory) && isDirectory.boolValue {
+                let files = try fileManager.contentsOfDirectory(atPath: directory)
+                
+                // 优先寻找entry-default.hap或signed.hap这类关键文件名
+                let priorityFiles = files.filter { 
+                    let lowercased = $0.lowercased()
+                    return lowercased.hasSuffix(".hap") && 
+                           (lowercased.contains("entry") || 
+                            lowercased.contains("default") || 
+                            lowercased.contains("signed"))
+                }
+                
+                if !priorityFiles.isEmpty {
+                    print("找到优先级HAP文件: \(priorityFiles[0])")
+                    return directory + "/" + priorityFiles[0]
+                }
+                
+                // 其次寻找任何.hap文件
+                for file in files {
+                    if file.lowercased().hasSuffix(".hap") {
+                        print("找到HAP文件: \(file)")
+                        return directory + "/" + file
+                    }
+                }
+                
+                // 递归检查子目录
+                for file in files {
+                    let fullPath = directory + "/" + file
+                    var isDir: ObjCBool = false
+                    if fileManager.fileExists(atPath: fullPath, isDirectory: &isDir) && isDir.boolValue {
+                        if let hapInSubdir = findHapFile(in: fullPath) {
+                            return hapInSubdir
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("查找HAP文件失败: \(error.localizedDescription)")
+        }
+        return nil
+    }
+    
+    // 在解压后的目录中查找HAP文件
+    private func findHapInExtractedDir(_ extractDir: String) -> String? {
+        let fileManager = FileManager.default
+        do {
+            let files = try fileManager.contentsOfDirectory(atPath: extractDir)
+            
+            // 优先寻找entry-default.hap文件
+            for file in files {
+                if file.lowercased() == "entry-default.hap" {
+                    print("在解压目录中找到entry-default.hap文件")
+                    return extractDir + "/" + file
+                }
+            }
+            
+            // 其次寻找任何.hap文件
+            for file in files {
+                if file.lowercased().hasSuffix(".hap") {
+                    print("在解压目录中找到HAP文件: \(file)")
+                    return extractDir + "/" + file
+                }
+            }
+            
+            // 检查子目录
+            for file in files {
+                let fullPath = extractDir + "/" + file
+                var isDir: ObjCBool = false
+                if fileManager.fileExists(atPath: fullPath, isDirectory: &isDir) && isDir.boolValue {
+                    if let hapInSubdir = findHapInExtractedDir(fullPath) {
+                        return hapInSubdir
+                    }
+                }
+            }
+        } catch {
+            print("搜索解压目录失败: \(error.localizedDescription)")
+        }
+        return nil
+    }
+    
+    // 从包路径提取包名
+    private func extractBundleId(from packagePath: String) -> String {
+        // 1. 首先尝试从HAP文件中提取真实的bundleName
+        if packagePath.lowercased().hasSuffix(".hap") && FileManager.default.fileExists(atPath: packagePath) {
+            let tempDir = NSTemporaryDirectory() + "hap_extract_" + UUID().uuidString
+            
+            // 创建临时目录
+            do {
+                try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true, attributes: nil)
+                
+                // 解压module.json文件
+                let unzipProcess = Process()
+                unzipProcess.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+                unzipProcess.arguments = ["-o", packagePath, "module.json", "-d", tempDir]
+                
+                let outputPipe = Pipe()
+                unzipProcess.standardOutput = outputPipe
+                
+                try unzipProcess.run()
+                unzipProcess.waitUntilExit()
+                
+                // 读取module.json文件内容
+                let moduleJsonPath = tempDir + "/module.json"
+                if FileManager.default.fileExists(atPath: moduleJsonPath) {
+                    let jsonData = try Data(contentsOf: URL(fileURLWithPath: moduleJsonPath))
+                    if let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                       let app = json["app"] as? [String: Any],
+                       let bundleName = app["bundleName"] as? String {
+                        // 清理临时目录
+                        try? FileManager.default.removeItem(atPath: tempDir)
+                        return bundleName
+                    }
+                }
+                
+                // 清理临时目录
+                try? FileManager.default.removeItem(atPath: tempDir)
+            } catch {
+                print("Error extracting bundleName: \(error)")
+            }
+        }
+        
+        // 2. 备选方法：如果无法提取到真实bundleName，退回到猜测方法
+        let pathComponents = packagePath.split(separator: "/")
+        
+        // 尝试从文件名猜测包名
+        for component in pathComponents.reversed() {
+            let filename = String(component)
+            if filename.lowercased().contains("entry") || filename.lowercased().hasSuffix(".hap") {
+                // 如果文件名中包含entry或以.hap结尾，尝试构造包名
+                if let range = filename.range(of: "-") {
+                    let prefix = filename[..<range.lowerBound]
+                    return "com.\(prefix).harmonyapp"
+                }
+            }
+        }
+        
+        // 默认包名
+        return "com.example.harmonyapp"
+    }
+    
+    // 执行命令并获取输出
+    private func runCommandWithOutput(_ cmd: String, args: [String]) -> String {
+        let task = Process()
+        let pipe = Pipe()
+        
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.executableURL = URL(fileURLWithPath: cmd)
+        task.arguments = args
+        
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            task.waitUntilExit()
+            return output
+        } catch {
+            print("执行命令失败: \(error.localizedDescription)")
+            return "Error: \(error.localizedDescription)"
+        }
     }
 } 

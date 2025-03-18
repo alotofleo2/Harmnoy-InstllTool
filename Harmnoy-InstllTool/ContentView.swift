@@ -203,7 +203,8 @@ struct ContentView: View {
         .fileImporter(
             isPresented: $showFilePickerDialog,
             allowedContentTypes: [
-                UTType(filenameExtension: "app")!
+                UTType(filenameExtension: "app")!,
+                UTType(filenameExtension: "hap")!
             ],
             allowsMultipleSelection: false
         ) { result in
@@ -275,33 +276,17 @@ struct ContentView: View {
     
     private func handleDroppedFile(_ url: URL) {
         print("处理拖放文件: \(url.path), 类型: \(url.pathExtension)")
-        print("文件是否可访问: \(FileManager.default.isReadableFile(atPath: url.path) ? "是" : "否")")
-        print("文件是否存在: \(FileManager.default.fileExists(atPath: url.path) ? "是" : "否")")
         
-        // 检查URL是否为安全作用域URL
+        // 获取安全的文件路径访问权限
         let isSecurityScopedResource = url.startAccessingSecurityScopedResource()
-        print("是否为安全作用域URL: \(isSecurityScopedResource ? "是" : "否")")
+        print("文件安全访问权限状态: \(isSecurityScopedResource ? "已授予" : "未授予")")
         
-        // 显示更多文件信息
-        let fileManager = FileManager.default
-        var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) {
-            print("文件类型: \(isDirectory.boolValue ? "目录" : "普通文件")")
-            
-            // 显示文件大小
-            if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-               let fileSize = attributes[.size] as? NSNumber {
-                print("文件大小: \(fileSize.intValue) 字节")
-            }
-            
-            // 显示是否在临时目录
-            let isInTempDir = url.path.contains("/var/folders/") || url.path.contains("/tmp/")
-            print("是否在临时目录: \(isInTempDir ? "是" : "否")")
-        }
+        // 检查文件类型
+        let fileExtension = url.pathExtension.lowercased()
         
-        // 检查是否为.app文件
-        if url.pathExtension.lowercased() != "app" {
-            statusMessage = "错误: 只支持HarmonyOS安装包(.app)文件，不支持.\(url.pathExtension)文件"
+        // 检查是否为支持的文件类型(.app或.hap)
+        if fileExtension != "app" && fileExtension != "hap" {
+            statusMessage = "错误: 只支持HarmonyOS安装包(.app或.hap)文件，不支持.\(url.pathExtension)文件"
             if isSecurityScopedResource {
                 url.stopAccessingSecurityScopedResource()
             }
@@ -319,7 +304,7 @@ struct ContentView: View {
         
         // 验证是否为有效的HarmonyOS安装包
         guard FileDropService.isValidHarmonyPackage(url) else {
-            statusMessage = "错误: 不是有效的HarmonyOS安装包(.app)"
+            statusMessage = "错误: 不是有效的HarmonyOS安装包(.app或.hap)"
             if isSecurityScopedResource {
                 url.stopAccessingSecurityScopedResource()
             }
@@ -350,9 +335,9 @@ struct ContentView: View {
         
         // 检查文件类型
         let fileExtension = url.pathExtension.lowercased()
-        if fileExtension != "app" {
-            print("文件类型错误: 选择了.\(fileExtension)文件，但只支持.app文件")
-            statusMessage = "错误: 只支持HarmonyOS安装包(.app)文件，不支持.\(fileExtension)文件"
+        if fileExtension != "app" && fileExtension != "hap" {
+            print("文件类型错误: 选择了.\(fileExtension)文件，但只支持.app和.hap文件")
+            statusMessage = "错误: 只支持HarmonyOS安装包(.app或.hap)文件，不支持.\(fileExtension)文件"
             if accessGranted {
                 url.stopAccessingSecurityScopedResource()
             }
@@ -372,8 +357,8 @@ struct ContentView: View {
         
         // 检查是否为有效的安装包
         guard FileDropService.isValidHarmonyPackage(url) else {
-            print("文件不是有效的HarmonyOS安装包(.app): \(url.lastPathComponent)")
-            statusMessage = "错误: 不是有效的HarmonyOS安装包(.app)"
+            print("文件不是有效的HarmonyOS安装包(.app或.hap): \(url.lastPathComponent)")
+            statusMessage = "错误: 不是有效的HarmonyOS安装包(.app或.hap)"
             if accessGranted {
                 url.stopAccessingSecurityScopedResource()
             }
@@ -408,9 +393,10 @@ struct ContentView: View {
         }
         
         // 检查文件扩展名
-        if URL(fileURLWithPath: packagePath).pathExtension.lowercased() != "app" {
+        let fileExtension = URL(fileURLWithPath: packagePath).pathExtension.lowercased()
+        if fileExtension != "app" && fileExtension != "hap" {
             print("文件格式不正确: \(packagePath)")
-            statusMessage = "错误: 只支持.app格式的HarmonyOS应用包"
+            statusMessage = "错误: 只支持.app和.hap格式的HarmonyOS应用包"
             return
         }
         
@@ -758,6 +744,28 @@ struct ContentView: View {
                     isLoading = false
                 }
             }
+        }
+    }
+    
+    // 选择安装包文件
+    private func selectHarmonyPackage() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [UTType.package, UTType(filenameExtension: "app")!, UTType(filenameExtension: "hap")!]
+        panel.title = "选择HarmonyOS安装包"
+        panel.message = "请选择HarmonyOS应用安装包(.app或.hap文件)"
+        panel.prompt = "选择"
+        
+        print("正在打开文件选择面板...")
+        let result = panel.runModal()
+        
+        if result == .OK, let selectedURL = panel.url {
+            print("用户选择文件: \(selectedURL.path)")
+            handleSelectedFile(selectedURL)
+        } else {
+            print("文件选择取消")
         }
     }
 }
