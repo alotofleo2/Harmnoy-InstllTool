@@ -24,21 +24,21 @@ struct ContentView: View {
     @State private var downloadStatusMessage: String = ""
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 10) {
             // 标题
             Text("HarmonyOS 安装工具")
                 .font(.system(size: 24, weight: .bold))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 5)
+                .padding(.bottom, 2)
             
             // 拖放区域
-            VStack {
+            VStack(spacing: 5) {
                 Text("拖入HarmonyOS安装包(.app文件)")
                     .font(.headline)
                 
                 // URL下载功能
-                VStack {
+                VStack(spacing: 5) {
                     HStack {
                         TextField("输入.hap结尾的下载链接", text: $downloadURL)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -69,12 +69,12 @@ struct ContentView: View {
                             .foregroundColor(downloadStatusMessage.contains("失败") ? .red : .green)
                     }
                 }
-                .padding(.bottom, 10)
+                .padding(.bottom, 5)
                 
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5]))
-                        .frame(height: 150)
+                        .frame(height: 120)
                         .foregroundColor(.gray)
                         .background(Color.red.opacity(0.05))
                     
@@ -101,7 +101,8 @@ struct ContentView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 5)
                 .onDrop(of: FileDropService.supportedTypes, delegate: FileDropDelegate(onDrop: { url in
                     handleDroppedFile(url)
                 }))
@@ -116,7 +117,7 @@ struct ContentView: View {
             }
             
             // 设备列表
-            VStack {
+            VStack(spacing: 5) {
                 HStack {
                     Text("已连接设备")
                         .font(.headline)
@@ -190,24 +191,26 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .frame(height: 150)
+                    .frame(height: 120)
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 5)
             
             // 状态区域
-            VStack {
+            VStack(spacing: 3) {
                 if isLoading {
                     ProgressView()
-                        .padding(.bottom, 5)
+                        .padding(.bottom, 3)
                 }
                 
                 Text(statusMessage)
                     .foregroundColor(statusMessage.contains("失败") || statusMessage.contains("错误") ? .red : .primary)
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 5)
             
-            Spacer()
+            Spacer(minLength: 0)
             
             // 底部工具栏
             HStack {
@@ -222,8 +225,8 @@ struct ContentView: View {
             }
             .padding(.horizontal)
         }
-        .padding()
-        .frame(minWidth: 500, minHeight: 500)
+        .padding(10)
+        .frame(minWidth: 500, minHeight: 590)
         .onAppear {
             // 在应用启动时启动hdc服务并检测设备
             startServices()
