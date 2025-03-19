@@ -9,15 +9,9 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>FitnessInstaller</string>
+				<string>HarmnonyInstaller</string>
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSMultipleInstancesProhibited</key>
-	<true/>
 </dict>
 </plist>
