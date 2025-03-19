@@ -34,7 +34,7 @@ struct ContentView: View {
             
             // 拖放区域
             VStack(spacing: 5) {
-                Text("拖入HarmonyOS安装包(.app文件)")
+                Text("拖入HarmonyOS安装包(.hap文件)")
                     .font(.headline)
                 
                 // URL下载功能
@@ -108,12 +108,8 @@ struct ContentView: View {
                 }))
                 .onTapGesture {
                     print("点击了文件上传区域")
-                    showFilePickerDialog = true
+                    selectHarmonyPackage()
                 }
-                .gesture(TapGesture().onEnded {
-                    print("添加的手势被触发")
-                    showFilePickerDialog = true
-                })
             }
             
             // 设备列表
@@ -226,7 +222,7 @@ struct ContentView: View {
             .padding(.horizontal)
         }
         .padding(10)
-        .frame(minWidth: 500, minHeight: 590)
+        .frame(minWidth: 500, idealWidth: 500, maxWidth: 550, minHeight: 300, idealHeight: 300, maxHeight: 300)
         .onAppear {
             // 在应用启动时启动hdc服务并检测设备
             startServices()
@@ -836,25 +832,17 @@ struct ContentView: View {
         }
     }
     
-    // 选择安装包文件
-    private func selectHarmonyPackage() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowedContentTypes = [UTType.package, UTType(filenameExtension: "app")!, UTType(filenameExtension: "hap")!]
-        panel.title = "选择HarmonyOS安装包"
-        panel.message = "请选择HarmonyOS应用安装包(.app或.hap文件)"
-        panel.prompt = "选择"
+    // 选择鸿蒙安装包
+    func selectHarmonyPackage() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "选择鸿蒙应用安装包"
+        openPanel.allowedContentTypes = [UTType(filenameExtension: "app")!, UTType(filenameExtension: "hap")!]
+        openPanel.allowsMultipleSelection = false
         
-        print("正在打开文件选择面板...")
-        let result = panel.runModal()
-        
-        if result == .OK, let selectedURL = panel.url {
-            print("用户选择文件: \(selectedURL.path)")
-            handleSelectedFile(selectedURL)
-        } else {
-            print("文件选择取消")
+        openPanel.begin { response in
+            if response == .OK, let url = openPanel.url {
+                handleDroppedFile(url)
+            }
         }
     }
     
