@@ -73,7 +73,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 处理URL Scheme调用
     private func handleURLScheme(_ url: URL) {
         // 检查是否是我们的自定义URL scheme
-        if url.scheme?.lowercased() == "fitnessinstaller" {
+        if url.scheme?.lowercased() == "harmonyinstaller" {
             // 解析URL参数
             if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let queryItems = components.queryItems {
