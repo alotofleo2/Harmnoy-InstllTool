@@ -2,106 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2025 方焘. All rights reserved.</string>
-    
-    <!-- 沙盒状态设置 - 关闭沙盒限制 -->
-    <key>NSAppSandboxType</key>
-    <string>none</string>
-    <key>CSResourcesFileMapped</key>
-    <true/>
-    
-    <!-- 文件访问权限 -->
-    <key>NSFileProviderDomainUsageDescription</key>
-    <string>此应用需要访问文件系统以选择和安装HarmonyOS应用包(.app)</string>
-    
-    <!-- 新增文件访问权限声明 -->
-    <key>NSDesktopFolderUsageDescription</key>
-    <string>此应用需要访问桌面文件夹以选择和安装HarmonyOS应用包</string>
-    
-    <key>NSDocumentsFolderUsageDescription</key>
-    <string>此应用需要访问文档文件夹以选择和安装HarmonyOS应用包</string>
-    
-    <key>NSDownloadsFolderUsageDescription</key>
-    <string>此应用需要访问下载文件夹以选择和安装HarmonyOS应用包</string>
-    
-    <key>NSTemporaryDirectoryUsageDescription</key>
-    <string>此应用需要访问临时文件夹以处理拖放的应用包</string>
-    
-    <key>NSFileProviderPresenceUsageDescription</key>
-    <string>此应用需要跟踪文件状态以确保安装包的完整性</string>
-    
-    <!-- 临时目录访问权限 -->
-    <key>NSRemovableVolumesUsageDescription</key>
-    <string>此应用需要访问可移动存储设备以查找和安装应用包</string>
-    
-    <key>NSAllApplicationsUsageDescription</key>
-    <string>此应用需要访问应用程序文件夹以查找工具和相关文件</string>
-    
-    <!-- 系统级权限 -->
-    <key>NSSystemAdministrationUsageDescription</key>
-    <string>此应用可能需要管理员权限以安装应用包和设置工具</string>
-    
-    <!-- USB设备访问声明 -->
-    <key>IOKitPersonalities</key>
-    <dict>
-        <key>HarmonyDevice</key>
-        <dict>
-            <key>CFBundleIdentifier</key>
-            <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-            <key>IOClass</key>
-            <string>IOUSBDevice</string>
-            <key>IOProviderClass</key>
-            <string>IOUSBDevice</string>
-        </dict>
-    </dict>
-    
-    <!-- 安全策略例外 -->
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
-    
-    <!-- 应用沙盒安全例外 -->
-    <key>NSAppleEventsUsageDescription</key>
-    <string>此应用需要执行命令行工具以管理HarmonyOS设备</string>
-    
-    <!-- 硬件权限 -->
-    <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>此应用需要使用蓝牙与HarmonyOS设备通信</string>
-    <key>NSBluetoothPeripheralUsageDescription</key>
-    <string>此应用需要使用蓝牙与HarmonyOS设备通信</string>
-    
-    <!-- macOS安全权限 -->
-    <key>com.apple.security.device.usb</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-    <key>com.apple.security.files.downloads.read-write</key>
-    <true/>
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-    <key>com.apple.security.files.all</key>
-    <true/>
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
-    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-    <array>
-        <string>/</string>
-        <string>/var/</string>
-        <string>/var/folders/</string>
-        <string>/private/var/</string>
-        <string>/private/var/folders/</string>
-        <string>/Users/</string>
-        <string>/Users/Shared/</string>
-        <string>/tmp/</string>
-    </array>
-    
-    <!-- 临时文件访问例外 -->
-    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-    <array>
-        <string>com.apple.security.temporary-exception</string>
-    </array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>FitnessInstaller</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 </dict>
-</plist> 
+</plist>

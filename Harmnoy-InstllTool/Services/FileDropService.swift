@@ -149,11 +149,13 @@ struct FileDropDelegate: DropDelegate {
                 let appDir = appSupportDir.appendingPathComponent("HarmonyInstallTool", isDirectory: true)
                 try fileManager.createDirectory(at: appDir, withIntermediateDirectories: true, attributes: nil)
                 
-                // 使用UUID确保文件名唯一
-                let uniqueFileName = UUID().uuidString + "-" + tempURL.lastPathComponent
-                let destinationURL = appDir.appendingPathComponent(uniqueFileName)
+                // 使用原始文件名而不是UUID前缀，以便检测重复文件
+                let fileName = tempURL.lastPathComponent
+                let destinationURL = appDir.appendingPathComponent(fileName)
                 
+                // 检查同名文件是否已存在，如果存在则删除
                 if fileManager.fileExists(atPath: destinationURL.path) {
+                    print("发现同名文件，正在删除: \(destinationURL.path)")
                     try fileManager.removeItem(at: destinationURL)
                 }
                 

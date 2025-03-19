@@ -1,6 +1,9 @@
 import SwiftUI
 import Foundation
 
+// 全局变量来保存URL参数，以便ContentView可以访问
+var launchURL: URL? = nil
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     private let hdcService = HdcService()
     
@@ -10,6 +13,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 在启动时设置hdc工具
         setupHdcTool()
+        
+        // 注册处理AppleEvent事件
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
     }
     
     func applicationWillTerminate(_ notification: Notification) {
@@ -18,6 +29,85 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // 停止hdc服务
         hdcService.stopHdcServer()
+        
+        // 注销URL事件处理器
+        NSAppleEventManager.shared().removeEventHandler(
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+    
+    // 处理应用程序重新打开的情况，确保只有一个实例
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // 将应用置于前台并处理任何待处理的URL
+        activateApp()
+        
+        return true
+    }
+    
+    // 应用程序被打开URL时调用
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first else { return }
+        
+        print("应用通过URL Scheme打开: \(url)")
+        
+        handleURLScheme(url)
+        
+        // 激活应用程序
+        activateApp()
+    }
+    
+    // AppleEvent处理器 - 用于捕获URL scheme事件
+    @objc func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: urlString) else {
+            print("无法从AppleEvent获取URL")
+            return
+        }
+        
+        print("通过AppleEvent接收到URL: \(url)")
+        handleURLScheme(url)
+        activateApp()
+    }
+    
+    // 处理URL Scheme调用
+    private func handleURLScheme(_ url: URL) {
+        // 检查是否是我们的自定义URL scheme
+        if url.scheme?.lowercased() == "fitnessinstaller" {
+            // 解析URL参数
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let queryItems = components.queryItems {
+                
+                // 查找url参数
+                if let urlParam = queryItems.first(where: { $0.name == "url" })?.value {
+                    // 保存URL参数到全局变量
+                    if let downloadURL = URL(string: urlParam) {
+                        print("提取到下载链接: \(urlParam)")
+                        launchURL = downloadURL
+                        
+                        // 通知所有窗口，有URL需要处理
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("ProcessURLScheme"),
+                            object: downloadURL.absoluteString
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // 激活应用程序
+    private func activateApp() {
+        // 主动激活应用，将其置于前台
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // 确保主窗口可见
+        if let mainWindow = NSApp.windows.first {
+            if !mainWindow.isVisible {
+                mainWindow.makeKeyAndOrderFront(nil)
+            }
+            mainWindow.orderFrontRegardless()
+        }
     }
     
     /// 设置hdc工具

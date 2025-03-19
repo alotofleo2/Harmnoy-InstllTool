@@ -27,8 +27,10 @@ struct ContentView: View {
         VStack(spacing: 20) {
             // 标题
             Text("HarmonyOS 安装工具")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+                .font(.system(size: 24, weight: .bold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 5)
             
             // 拖放区域
             VStack {
@@ -225,6 +227,20 @@ struct ContentView: View {
         .onAppear {
             // 在应用启动时启动hdc服务并检测设备
             startServices()
+            
+            // 检查是否有通过URL Scheme传入的链接
+            checkForLaunchURL()
+            
+            // 添加URL Scheme通知监听
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ProcessURLScheme"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let urlString = notification.object as? String {
+                    self.handleURLScheme(urlString: urlString)
+                }
+            }
         }
         .onChange(of: hdcService.lastError) { newError in
             if let error = newError {
@@ -404,16 +420,47 @@ struct ContentView: View {
             return
         }
         
-        // 保持文件的安全访问权限，以便后续安装操作可以访问
-        if accessGranted {
-            print("保持文件安全访问权限: \(url.path)")
-            // 注意：我们故意不调用 url.stopAccessingSecurityScopedResource()
-            // 以保持对文件的访问权限，直到应用不再需要访问文件
+        // 检查是否需要创建永久副本
+        do {
+            let appSupportDir = try fileManager.url(for: .applicationSupportDirectory,
+                                                 in: .userDomainMask,
+                                                 appropriateFor: nil,
+                                                 create: true)
+            
+            let appDir = appSupportDir.appendingPathComponent("HarmonyInstallTool", isDirectory: true)
+            try fileManager.createDirectory(at: appDir, withIntermediateDirectories: true, attributes: nil)
+            
+            // 使用原始文件名
+            let fileName = url.lastPathComponent
+            let destinationURL = appDir.appendingPathComponent(fileName)
+            
+            // 检查同名文件是否已存在，如果存在则删除
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                print("发现同名文件，正在删除: \(destinationURL.path)")
+                try fileManager.removeItem(at: destinationURL)
+            }
+            
+            // 复制文件到应用支持目录
+            try fileManager.copyItem(at: url, to: destinationURL)
+            
+            // 使用复制后的文件路径
+            installPackagePath = destinationURL.path
+            statusMessage = "已选择安装包: \(fileName)"
+            print("文件已复制，设置安装路径: \(destinationURL.path)")
+            
+        } catch {
+            print("创建文件副本失败: \(error)")
+            
+            // 保持文件的安全访问权限
+            if accessGranted {
+                print("保持文件安全访问权限: \(url.path)")
+            }
+            
+            // 如果无法复制，直接使用原始路径
+            installPackagePath = url.path
+            statusMessage = "已选择安装包: \(url.lastPathComponent)"
+            print("文件有效，设置安装路径: \(url.path)")
         }
-        
-        print("文件有效，设置安装路径: \(url.path)")
-        installPackagePath = url.path
-        statusMessage = "已选择安装包: \(url.lastPathComponent)"
     }
     
     private func installToDevice(_ deviceId: String) {
@@ -823,20 +870,36 @@ struct ContentView: View {
         // 创建下载目录
         let fileManager = FileManager.default
         do {
+            // 确保Application Support目录存在
             let appSupportDir = try fileManager.url(for: .applicationSupportDirectory,
                                                  in: .userDomainMask,
                                                  appropriateFor: nil,
                                                  create: true)
             
-            let downloadDir = appSupportDir.appendingPathComponent("HarmonyInstallTool/Downloads", isDirectory: true)
+            // 创建带层级的下载目录路径
+            let baseDir = appSupportDir.appendingPathComponent("HarmonyInstallTool", isDirectory: true)
+            try fileManager.createDirectory(at: baseDir, withIntermediateDirectories: true, attributes: nil)
+            
+            let downloadDir = baseDir.appendingPathComponent("Downloads", isDirectory: true)
             try fileManager.createDirectory(at: downloadDir, withIntermediateDirectories: true, attributes: nil)
+            
+            // 确认目录是否创建成功
+            if !fileManager.fileExists(atPath: downloadDir.path) {
+                print("错误: 无法创建下载目录: \(downloadDir.path)")
+                throw NSError(domain: "ContentView", code: 1001, 
+                            userInfo: [NSLocalizedDescriptionKey: "无法创建下载目录"])
+            }
             
             // 获取文件名
             let fileName = URL(string: downloadURL)?.lastPathComponent ?? "downloaded-\(UUID().uuidString).hap"
             let destinationURL = downloadDir.appendingPathComponent(fileName)
             
+            print("下载目标路径: \(destinationURL.path)")
+            print("下载目录存在: \(fileManager.fileExists(atPath: downloadDir.path) ? "是" : "否")")
+            
             // 如果文件已存在，先删除
             if fileManager.fileExists(atPath: destinationURL.path) {
+                print("删除已存在的文件: \(destinationURL.path)")
                 try fileManager.removeItem(at: destinationURL)
             }
             
@@ -855,21 +918,88 @@ struct ContentView: View {
                         return
                     }
                     
+                    print("下载临时文件: \(tempURL.path)")
+                    print("临时文件存在: \(fileManager.fileExists(atPath: tempURL.path) ? "是" : "否")")
+                    
                     do {
-                        // 移动临时文件到目标位置
-                        try fileManager.moveItem(at: tempURL, to: destinationURL)
+                        // 再次确认目标目录存在
+                        if !fileManager.fileExists(atPath: downloadDir.path) {
+                            try fileManager.createDirectory(at: downloadDir, withIntermediateDirectories: true, attributes: nil)
+                        }
                         
-                        // 检查文件是否有效的HAP包
-                        if FileDropService.isValidHarmonyPackage(destinationURL) {
-                            self.downloadStatusMessage = "下载成功: \(fileName)"
-                            
-                            // 设置为安装路径
-                            self.installPackagePath = destinationURL.path
-                            self.statusMessage = "已选择安装包: \(fileName)"
+                        // 如果目标文件已存在，先删除它
+                        if fileManager.fileExists(atPath: destinationURL.path) {
+                            try fileManager.removeItem(at: destinationURL)
+                        }
+                        
+                        // 直接读取临时文件的数据并写入目标文件，而不是移动
+                        if fileManager.fileExists(atPath: tempURL.path) {
+                            // 方法1：直接读取数据并写入
+                            let fileData = try Data(contentsOf: tempURL)
+                            try fileData.write(to: destinationURL)
+                            print("使用数据复制方法完成: \(destinationURL.path)")
                         } else {
-                            self.downloadStatusMessage = "下载的文件不是有效的HarmonyOS安装包"
+                            // 如果临时文件不存在，尝试从响应中获取数据
+                            print("临时文件不存在，尝试从响应获取数据")
+                            
+                            // 创建新的下载任务以获取数据
+                            let dataTask = URLSession.shared.dataTask(with: URL(string: downloadURL)!) { (data, response, error) in
+                                DispatchQueue.main.async {
+                                    if let error = error {
+                                        self.downloadStatusMessage = "下载失败: \(error.localizedDescription)"
+                                        return
+                                    }
+                                    
+                                    guard let data = data else {
+                                        self.downloadStatusMessage = "下载失败: 无法获取数据"
+                                        return
+                                    }
+                                    
+                                    do {
+                                        // 写入数据到目标文件
+                                        try data.write(to: destinationURL)
+                                        print("使用数据任务完成下载: \(destinationURL.path)")
+                                        
+                                        // 检查文件是否有效的HAP包
+                                        if FileDropService.isValidHarmonyPackage(destinationURL) {
+                                            self.downloadStatusMessage = "下载成功: \(fileName)"
+                                            
+                                            // 设置为安装路径
+                                            self.installPackagePath = destinationURL.path
+                                            self.statusMessage = "已选择安装包: \(fileName)"
+                                        } else {
+                                            self.downloadStatusMessage = "下载的文件不是有效的HarmonyOS安装包"
+                                        }
+                                    } catch {
+                                        print("数据写入失败: \(error)")
+                                        self.downloadStatusMessage = "处理下载文件失败: \(error.localizedDescription)"
+                                    }
+                                }
+                            }
+                            // 启动数据任务
+                            dataTask.resume()
+                            return // 提前返回，避免执行后续代码
+                        }
+                        
+                        // 确认文件是否成功写入
+                        if fileManager.fileExists(atPath: destinationURL.path) {
+                            print("文件复制成功: \(destinationURL.path)")
+                            
+                            // 检查文件是否有效的HAP包
+                            if FileDropService.isValidHarmonyPackage(destinationURL) {
+                                self.downloadStatusMessage = "下载成功: \(fileName)"
+                                
+                                // 设置为安装路径
+                                self.installPackagePath = destinationURL.path
+                                self.statusMessage = "已选择安装包: \(fileName)"
+                            } else {
+                                self.downloadStatusMessage = "下载的文件不是有效的HarmonyOS安装包"
+                            }
+                        } else {
+                            self.downloadStatusMessage = "下载失败: 文件写入后不存在"
                         }
                     } catch {
+                        print("处理下载文件失败: \(error)")
                         self.downloadStatusMessage = "处理下载文件失败: \(error.localizedDescription)"
                     }
                 }
@@ -889,8 +1019,31 @@ struct ContentView: View {
             downloadTask.resume()
         } catch {
             isDownloading = false
+            print("准备下载失败: \(error)")
             downloadStatusMessage = "准备下载失败: \(error.localizedDescription)"
         }
+    }
+    
+    // 处理通过URL Scheme传入的下载链接
+    private func handleURLScheme(urlString: String) {
+        // 确保是hap文件链接
+        if urlString.lowercased().hasSuffix(".hap") {
+            // 设置下载链接
+            downloadURL = urlString
+            
+            // 自动触发下载
+            downloadHapPackage()
+        }
+    }
+    
+    // 检查是否有通过URL Scheme启动时传入的链接
+    private func checkForLaunchURL() {
+        // 访问AppDelegate.swift中定义的全局变量
+        guard let url = launchURL?.absoluteString else { return }
+        
+        handleURLScheme(urlString: url)
+        // 清除全局变量，避免重复处理
+        launchURL = nil
     }
 }
 
