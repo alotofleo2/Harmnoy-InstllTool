@@ -1,106 +1,83 @@
-# HarmonyOS安装工具
+# HarmonyOS安装工具 (Harmony Installer)
 
-这是一个macOS应用程序,用于简化HarmonyOS应用包(.hap)的安装过程。通过图形界面,用户可以轻松将应用安装到连接的HarmonyOS设备上。
+macOS平台专用的鸿蒙应用（HAP包）安装工具，简化开发者和用户安装鸿蒙应用的流程。
 
-## 功能特性
+## 系统要求
 
-1. 拖放式安装包导入功能
-2. 自动检测已连接的HarmonyOS设备
-3. 一键安装应用到选定设备
-4. 集成hdc工具,无需额外安装
+- 操作系统：macOS 12.15  或更高版本
+- 仅支持Mac系统，不支持Windows或Linux
 
-## 开发准备
+## 安装方法
 
-### 环境要求
-- macOS 12.0 或更高版本
-- Xcode 14.0 或更高版本
-- Swift 5.7 或更高版本
-
-### 获取hdc工具
-hdc (HarmonyOS Device Connector) 是华为开发的用于连接和管理HarmonyOS设备的命令行工具。您可以通过以下方式获取：
-
-1. 从[华为开发者联盟网站](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/hdc)下载
-2. 从HarmonyOS SDK包中提取（通常位于SDK的toolchains目录下）
-
-### 必要的依赖库文件
-hdc工具依赖以下库文件：
-- libusb_shared.dylib：用于访问USB设备
-
-如果这些库文件不存在，应用会提示您手动选择这些文件。您可以从以下位置获取：
-1. 从HarmonyOS SDK包中提取（通常位于SDK的lib目录下）
-2. 从华为开发者网站下载
-
-### 配置hdc工具
-获取hdc工具后，您有以下几种方式配置：
-
-#### 方式1: 开发阶段手动配置（推荐）
-1. 将hdc工具放入项目根目录下的`ResourcesTools/hdc`文件夹中
-   ```
-   ResourcesTools/
-   └── hdc        # 直接放置hdc可执行文件
-   ```
-2. 将依赖库文件放入项目根目录下的`ResourcesTools/lib`文件夹中
-   ```
-   ResourcesTools/
-   └── lib/
-       └── libusb_shared.dylib
-   ```
-
-#### 方式2: 在应用程序中手动选择
-1. 启动应用程序
-2. 如果应用程序提示"未找到hdc工具"，点击"选择hdc工具"按钮
-3. 在文件选择对话框中选择hdc可执行文件
-4. 如果应用程序提示"缺少libusb_shared.dylib库文件"，点击"选择libusb_shared.dylib文件"按钮
-5. 在文件选择对话框中选择相应的库文件
-
-#### 方式3: 使用toolchains包
-如果您有完整的toolchains包，可以将其放置在以下位置：
-```
-ResourcesTools/
-└── toolchains/
-    ├── bin/
-    │   └── hdc    # hdc可执行文件
-    └── lib/
-        └── libusb_shared.dylib
-```
-
-### 开发设置
-1. 配置好hdc工具和依赖库
-2. 打开Xcode项目并构建运行
+1. 下载最新版安装包 (DMG文件)
+2. 打开DMG文件，将应用拖入Applications文件夹
+3. 首次启动可能需要在系统偏好设置中允许应用运行
 
 ## 使用方法
 
-1. 通过数据线将HarmonyOS设备连接到Mac
-2. 启动应用程序
-3. 将.hap安装包拖入应用窗口或点击窗口选择文件
-4. 等待设备被识别(可点击刷新按钮刷新设备列表)
-5. 点击对应设备的"安装"按钮,将应用安装到该设备
+### 方法一：通过URL Scheme启动（网页跳转）
 
-## 技术实现
+可以通过以下URL Scheme格式从网页或其他应用启动安装工具并指定HAP包：
 
-- 使用SwiftUI开发用户界面
-- 通过集成hdc命令行工具实现与设备的通信
-- 采用响应式设计,实时更新安装状态和设备连接信息
+```
+Harmonyinstaller://com.leoao.Installer?url=<HAP包URL>
+```
+
+例如：
+```
+Harmonyinstaller://com.leoao.Installer?url=https://example.com/app.hap
+```
+
+### 方法二：直接拖拽安装
+
+1. 启动Harmony安装工具
+2. 将HAP包文件拖入应用窗口
+3. 点击安装按钮
+
+### 方法三：从文件选择器安装
+
+1. 启动Harmony安装工具
+2. 点击"打开文件"按钮
+3. 在文件选择器中选择HAP包文件
+4. 点击安装按钮
+
+## 常见问题
+
+### 首次启动失败
+
+如果应用无法启动，需要在系统安全性设置中允许运行：
+
+1. 前往 系统偏好设置 → 安全性与隐私 → 安全性
+2. 点击 "仍要打开" 按钮允许应用运行
+
+### 权限问题
+
+应用需要完全磁盘访问权限才能正常工作：
+
+1. 系统偏好设置 → 安全性与隐私 → 隐私
+2. 选择"完全磁盘访问权限" → 解锁 → 勾选"Harmony安装工具"
+
+## 开发者集成
+
+### 网页集成
+
+可以在网页中添加以下HTML代码来提供安装按钮：
+
+```html
+<a href="Harmonyinstaller://com.leoao.Installer?url=您的HAP包URL">安装应用</a>
+```
+
+### 参数说明
+
+URL Scheme支持的参数：
+- `url`: HAP包的下载地址（必填）
 
 ## 注意事项
 
-- 首次使用时,macOS可能会请求访问权限,请允许相关权限以确保功能正常
-- 请确保设备已开启开发者选项和USB调试模式
-- 安装过程需要保持设备连接
+- 仅支持安装符合HarmonyOS规范的HAP包
+- 安装过程中请保持网络连接
+- 为保证安全，请仅从可信来源下载和安装HAP包
 
-## 故障排除
+## 版本历史
 
-### 如果遇到"未找到hdc工具"错误
-1. 确保hdc工具已正确放置在ResourcesTools目录的正确位置
-2. 使用应用程序中的"选择hdc工具"功能手动指定hdc工具位置
-3. 确保hdc工具具有执行权限（chmod +x path/to/hdc）
-
-### 如果遇到"缺少libusb_shared.dylib"错误
-1. 确保libusb_shared.dylib库已正确放置在ResourcesTools/lib目录中
-2. 使用应用程序中的"选择libusb_shared.dylib文件"功能手动指定库文件位置
-3. 检查hdc工具是否与libusb_shared.dylib版本匹配
-
-### 其他问题
-1. 重启应用程序
-2. 确保HarmonyOS设备正确连接且已开启USB调试
-3. 检查系统日志获取更多信息 
+- v1.0.0：初始版本
