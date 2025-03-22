@@ -193,7 +193,7 @@
     </div>
     
     <div id="action-buttons">
-      <button id="install-btn" class="btn">工具直接安装</button>
+      <button id="install-btn" class="btn">跳转工具APP安装</button>
       <a id="download-hap-btn" href="#" class="btn alt-btn hidden">直接下载HAP包</a>
     </div>
     
@@ -203,29 +203,47 @@
     
     <div>
       <p>尚未安装鸿蒙安装工具？</p>
-      <a href="https://res.leoao.com/7060/test/0ee6b5e5fa694341.dmg" class="btn download-btn">下载安装工具</a>
+      <a href="https://res.leoao.com/7060/dev/temp/2db8c2bd24330e4d.dmg" class="btn download-btn" id="download-tool-btn">下载安装工具</a>
       
-      <div id="permission-guidance" style="margin-top: 15px; background-color: #fff8e6; border: 1px solid #ffeeba; border-radius: 8px; padding: 12px; text-align: left; font-size: 13px;">
-        <details>
-          <summary style="font-weight: 600; color: #856404; cursor: pointer; margin-bottom: 5px;">⚠️ 首次启动失败？点击查看权限设置方法</summary>
-          <div style="padding-top: 8px;">
-            <p style="margin-bottom: 8px; font-size: 13px;">需要在系统设置中授予完全磁盘访问权限：</p>
-            <ol style="margin: 0 0 10px 20px; padding: 0; font-size: 12px; line-height: 1.4;">
-              <li>系统偏好设置 → 安全性与隐私 → 隐私</li>
-              <li>选择"完全磁盘访问权限" → 解锁 → 勾选"Harmony安装工具"</li>
-            </ol>
-            <button id="open-settings-btn" class="btn" style="background-color: #ffc107; color: #212529; font-size: 12px; padding: 6px 10px; width: 100%; margin-top: 5px;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 5px; vertical-align: -2px;">
-                <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
-              </svg>
-              一键跳转到系统设置
-            </button>
-          </div>
-        </details>
+      <div style="margin-top: 15px;">
+        <button id="show-guidance-btn" class="btn" style="background-color: #fff8e6; color: #856404; border: 1px solid #ffeeba; font-size: 13px; width: 100%; text-align: left; padding: 10px 15px; border-radius: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px; vertical-align: -2px;">
+            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+            <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+          </svg>
+          ⚠️ 首次启动失败？点击查看权限设置方法
+        </button>
       </div>
     </div>
     
     <p class="note">安装工具仅支持Mac系统</p>
+  </div>
+  
+  <!-- 安全提示弹窗 -->
+  <div id="security-popup" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background-color: white; max-width: 450px; width: 90%; border-radius: 12px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+      <h3 style="font-size: 18px; margin-bottom: 15px; color: #e67e22;">⚠️ 安装工具下载提示</h3>
+      <p style="font-size: 14px; line-height: 1.5; margin-bottom: 15px;">
+        工具正在下载中，安装完成后如果发现APP未能启动，请按以下步骤操作：
+      </p>
+      
+      <div style="margin-bottom: 15px;">
+        <ol style="font-size: 14px; margin: 0 0 15px 20px; padding: 0; line-height: 1.5;">
+          <li>前往 <b>系统偏好设置 → 安全性与隐私 → 安全性</b></li>
+          <li>点击 <b>"仍要打开"</b> 按钮允许应用运行</li>
+        </ol>
+        <button id="security-settings-btn" class="btn" style="background-color: #ffc107; color: #212529; font-size: 12px; padding: 6px 10px; width: 100%;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 5px; vertical-align: -2px;">
+            <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
+          </svg>
+          一键跳转到安全性与隐私
+        </button>
+      </div>
+      
+      <div style="text-align: center;">
+        <button id="close-popup-btn" class="btn" style="background-color: #3498db; margin-top: 10px;">我知道了</button>
+      </div>
+    </div>
   </div>
   
   <script>
@@ -271,10 +289,28 @@
       location.href = url;
     });
     
-    // 设置按钮点击事件
-    document.getElementById('open-settings-btn').addEventListener('click', function() {
-      // 尝试使用URL协议打开系统偏好设置的安全性与隐私页面
-      location.href = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles';
+    // 下载按钮点击事件，显示安全提示弹窗
+    document.getElementById('download-tool-btn').addEventListener('click', function(e) {
+      // 显示弹窗
+      document.getElementById('security-popup').style.display = 'flex';
+      // 不阻止默认行为，让下载继续
+    });
+    
+    // 查看权限设置方法按钮点击事件
+    document.getElementById('show-guidance-btn').addEventListener('click', function() {
+      // 显示弹窗
+      document.getElementById('security-popup').style.display = 'flex';
+    });
+    
+    // 关闭弹窗按钮
+    document.getElementById('close-popup-btn').addEventListener('click', function() {
+      document.getElementById('security-popup').style.display = 'none';
+    });
+    
+    // 安全设置按钮点击事件
+    document.getElementById('security-settings-btn').addEventListener('click', function() {
+      // 跳转到安全性设置
+      location.href = 'x-apple.systempreferences:com.apple.preference.security';
     });
   </script>
 </body>
