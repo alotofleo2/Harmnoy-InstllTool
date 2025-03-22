@@ -893,4 +893,73 @@ class HdcService: ObservableObject {
             return "Error: \(error.localizedDescription)"
         }
     }
+    
+    /// 列出设备上安装的应用，用于验证安装是否成功
+    func listInstalledApps(deviceId: String) throws -> [String] {
+        guard let hdcPath = hdcBinaryPath else {
+            throw NSError(domain: "HdcService", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "未找到hdc工具"])
+        }
+        
+        // 获取hdc工具所在目录
+        let hdcDirectory = getHdcDirectory() ?? (URL(fileURLWithPath: hdcPath).deletingLastPathComponent().path)
+        
+        // 使用脚本方法执行命令
+        let tempScriptPath = NSTemporaryDirectory() + "list_apps_\(UUID().uuidString).sh"
+        let scriptContent = """
+        #!/bin/bash
+        # 设置DYLD_LIBRARY_PATH指向hdc所在目录
+        export DYLD_LIBRARY_PATH="\(hdcDirectory)"
+        # 设置工作目录为hdc目录
+        cd "\(hdcDirectory)"
+        
+        # 确保hdc有执行权限
+        chmod +x "\(hdcPath)"
+        
+        # 列出已安装的应用
+        "\(hdcPath)" -t \(deviceId) shell bm list -a
+        
+        exit $?
+        """
+        
+        try scriptContent.write(toFile: tempScriptPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempScriptPath)
+        
+        let task = Process()
+        let pipe = Pipe()
+        
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [tempScriptPath]
+        
+        try task.run()
+        task.waitUntilExit()
+        
+        // 清理临时脚本
+        try? FileManager.default.removeItem(atPath: tempScriptPath)
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        
+        if task.terminationStatus != 0 {
+            throw NSError(domain: "HdcService", code: Int(task.terminationStatus),
+                         userInfo: [NSLocalizedDescriptionKey: "获取安装应用列表失败: \(output)"])
+        }
+        
+        // 解析输出获取应用列表
+        let appListLines = output.components(separatedBy: .newlines)
+        var appList: [String] = []
+        
+        for line in appListLines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedLine.isEmpty && trimmedLine.contains(".") {
+                // 应用包名通常包含点号，过滤掉其他输出行
+                appList.append(trimmedLine)
+            }
+        }
+        
+        print("设备上安装的应用数: \(appList.count)")
+        return appList
+    }
 } 

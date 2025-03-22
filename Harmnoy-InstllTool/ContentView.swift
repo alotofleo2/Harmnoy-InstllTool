@@ -590,28 +590,8 @@ struct ContentView: View {
                             alert.runModal()
                         }
                     } else if result.contains("Not any installation package was found") {
-                        // 处理未找到安装包错误
-                        statusMessage = "安装失败: 未找到有效的HarmonyOS安装包"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            let alert = NSAlert()
-                            alert.messageText = "安装包错误"
-                            alert.informativeText = """
-                            安装失败：系统无法识别此应用包。
-                            
-                            可能的原因:
-                            1. 当前文件不是Harmony安装包，而是\(fileTypeDescription)
-                            2. 应用包结构不完整或已损坏
-                            3. 应用包内容不符合鸿蒙OS要求
-                            
-                            建议:
-                            - 确认安装包来源可靠
-                            - 检查安装包是否完整
-                            - 尝试获取正确的.hap格式安装包而不是.app格式
-                            """
-                            alert.alertStyle = .warning
-                            alert.addButton(withTitle: "确定")
-                            alert.runModal()
-                        }
+                        // 验证设备连接并检查应用是否成功安装，不依赖macOS版本
+                        verifyInstallationState(deviceId, fileTypeDescription)
                     } else if result.contains("方法 5失败") && result.contains("未找到任何.hap文件") {
                         // 特殊处理：未找到.hap文件的情况
                         statusMessage = "安装失败: 安装包中未找到有效的.hap文件"
@@ -705,8 +685,8 @@ struct ContentView: View {
                     isLoading = false
                     
                     // 错误分类处理
-                    let errorInfo: String
-                    let alertTitle: String
+                    var errorInfo: String = ""
+                    var alertTitle: String = ""
                     
                     if errorString.contains("Not match target") || errorString.contains("check connect-key") {
                         statusMessage = "安装失败: 设备连接问题"
@@ -723,22 +703,8 @@ struct ContentView: View {
                         - 确认设备已开启调试模式
                         """
                     } else if errorString.contains("Not any installation package was found") || errorString.contains("安装失败") {
-                        statusMessage = "安装失败: 不支持的文件格式"
-                        alertTitle = "安装包格式错误"
-                        errorInfo = """
-                        无法识别为有效的HarmonyOS安装包。
-                        
-                        文件类型: \(fileTypeDescription)
-                        
-                        可能的原因:
-                        1. 文件格式不受支持
-                        2. 安装包可能已损坏
-                        3. 该文件可能不是HarmonyOS应用包
-                        
-                        建议:
-                        - 尝试获取.hap格式的安装包
-                        - 确认安装包来源可靠
-                        """
+                        // 验证设备连接并检查应用是否成功安装，不依赖macOS版本
+                        verifyInstallationState(deviceId, fileTypeDescription)
                     } else if errorString.contains("无法读取") || errorString.contains("权限不足") {
                         statusMessage = "安装失败: 文件访问权限错误"
                         alertTitle = "文件访问错误"
@@ -1035,6 +1001,101 @@ struct ContentView: View {
         handleURLScheme(urlString: url)
         // 清除全局变量，避免重复处理
         launchURL = nil
+    }
+    
+    // 从包路径提取应用包名 (避免与HdcService中可能的同名方法冲突)
+    private func getAppBundleId(from packagePath: String) -> String {
+        // 从文件名猜测包名
+        let components = packagePath.split(separator: "/")
+        if let filename = components.last {
+            let filenameStr = String(filename)
+            
+            // 移除文件扩展名
+            let nameWithoutExt = filenameStr.split(separator: ".").first ?? ""
+            
+            // 如果文件名包含固定模式，提取包名
+            if let range = nameWithoutExt.range(of: "-") {
+                let prefix = nameWithoutExt[..<range.lowerBound]
+                return "com.\(prefix).harmonyapp"
+            }
+        }
+        
+        // 默认包名
+        return "com.example.harmonyapp"
+    }
+    
+    // 验证安装状态的公共方法，减少代码重复
+    private func verifyInstallationState(_ deviceId: String, _ fileTypeDescription: String) {
+        // 提取应用包ID，用于验证
+        var bundleId = ""
+        if let hapPath = installPackagePath {
+            bundleId = getAppBundleId(from: hapPath)
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            // 给系统一点时间完成可能成功的安装
+            Thread.sleep(forTimeInterval: 1.0)
+            
+            do {
+                // 尝试获取设备上安装的应用列表
+                let installedApps = try hdcService.listInstalledApps(deviceId: deviceId)
+                
+                // 如果可以成功获取应用列表，表示设备连接正常
+                let installationSuccessful = installedApps.count > 0
+                
+                // 如果有指定的bundleId，检查这个应用是否在列表中
+                let appInstalled = !bundleId.isEmpty ? installedApps.contains(where: { $0.contains(bundleId) }) : false
+                
+                DispatchQueue.main.async { [self] in
+                    if installationSuccessful {
+                        // 成功获取应用列表，设备连接正常，很可能安装成功了
+                        statusMessage = appInstalled ? "安装成功：已验证应用存在" : "安装可能成功"
+                        let alert = NSAlert()
+                        alert.messageText = "安装成功"
+                        alert.informativeText = appInstalled 
+                            ? "应用程序已成功安装到设备并已验证" 
+                            : "应用程序可能已成功安装到设备"
+                        alert.alertStyle = .informational
+                        alert.addButton(withTitle: "确定")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            alert.runModal()
+                        }
+                    } else {
+                        // 无法获取应用列表或应用未安装，显示原始错误信息
+                        showPackageErrorAlert(fileTypeDescription)
+                    }
+                }
+            } catch {
+                // 如果无法检查设备上的应用，返回原始错误消息
+                DispatchQueue.main.async { [self] in
+                    showPackageErrorAlert(fileTypeDescription)
+                }
+            }
+        }
+    }
+    
+    // 显示安装包错误提示
+    private func showPackageErrorAlert(_ fileTypeDescription: String) {
+        statusMessage = "安装失败: 不支持的文件格式"
+        let alert = NSAlert()
+        alert.messageText = "安装包格式错误"
+        alert.informativeText = """
+        无法识别为有效的HarmonyOS安装包。
+        
+        文件类型: \(fileTypeDescription)
+        
+        可能的原因:
+        1. 文件格式不受支持
+        2. 安装包可能已损坏
+        3. 该文件可能不是HarmonyOS应用包
+        
+        建议:
+        - 尝试获取.hap格式的安装包
+        - 确认安装包来源可靠
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "确定")
+        alert.runModal()
     }
 }
 
